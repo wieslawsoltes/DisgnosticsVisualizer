@@ -4,8 +4,10 @@
     <Project Path="src/DiagnosticsVisualizer.Protocol/DiagnosticsVisualizer.Protocol.csproj" />
     <Project Path="src/DiagnosticsVisualizer.Runtime/DiagnosticsVisualizer.Runtime.csproj" />
     <Project Path="src/DiagnosticsVisualizer.Analysis/DiagnosticsVisualizer.Analysis.csproj" />
+    <Project Path="src/DiagnosticsVisualizer.Weaver/DiagnosticsVisualizer.Weaver.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/DiagnosticsVisualizer.Tests/DiagnosticsVisualizer.Tests.csproj" />
+    <Project Path="tests/DiagnosticsVisualizer.Weaver.Fixtures/DiagnosticsVisualizer.Weaver.Fixtures.csproj" />
   </Folder>
 </Solution>
