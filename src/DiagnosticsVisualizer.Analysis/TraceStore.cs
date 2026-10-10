@@ -2,12 +2,15 @@ using DiagnosticsVisualizer.Core;
 
 namespace DiagnosticsVisualizer.Analysis;
 
+public sealed record SnapshotCheckpoint(long Sequence, long EventWatermark, SnapshotData Data);
+
 public sealed record TraceView(Guid SessionId, long Frequency, long OriginTimestamp,
     TraceEvent[] Events, IReadOnlyDictionary<int, string> Symbols,
     IReadOnlyDictionary<long, ObjectInfo> Objects, SnapshotData Snapshot,
     long DroppedEvents, long MissingBlocks, long ProbeFaults, long MetadataDrops,
     long EvictedEvents, bool Recording)
 {
+    public SnapshotCheckpoint[] Checkpoints { get; init; } = [];
     public string Name(in TraceEvent e) => Symbols.TryGetValue(e.NameId, out var name) ? name : $"site #{e.NameId}";
     public double Milliseconds(long ticks) => ticks * (1000d / Frequency);
 }
@@ -27,6 +30,9 @@ public sealed class TraceStore(int maxEvents = 2_000_000)
     private SnapshotData _snapshot = SnapshotData.Empty;
     private long _snapshotSequence;
     private bool _recording;
+    private readonly Queue<SnapshotCheckpoint> _checkpoints = new();
+    private long _watermark;
+    private int _snapshotNodes;
     public int Count { get { lock (_gate) return _count; } }
     public void Add(TraceBlock block)
     {
@@ -53,8 +59,14 @@ public sealed class TraceStore(int maxEvents = 2_000_000)
                 var removed = _chunks.Dequeue(); _count -= removed.Length; _evicted += removed.Length;
                 foreach (var e in removed) _ids.Remove(e.Id);
             }
+            if (block.Events.Length > 0) _watermark = Math.Max(_watermark, block.Events.Max(e => e.End));
             if (block.Snapshot is not null && block.Sequence >= _snapshotSequence)
-            { _snapshot = block.Snapshot; _snapshotSequence = block.Sequence; }
+            {
+                _snapshot = block.Snapshot; _snapshotSequence = block.Sequence;
+                _checkpoints.Enqueue(new(block.Sequence, _watermark, block.Snapshot)); _snapshotNodes += block.Snapshot.Nodes.Length;
+                while (_checkpoints.Count > 32 || (_snapshotNodes > 65536 && _checkpoints.Count > 1))
+                    _snapshotNodes -= _checkpoints.Dequeue().Data.Nodes.Length;
+            }
             _drops = Math.Max(_drops, block.DroppedEvents); _faults = Math.Max(_faults, block.ProbeFaults);
             _metadataDrops = Math.Max(_metadataDrops, block.MetadataDrops);
             if (block.Sequence == _highestSequence) _recording = block.Recording;
@@ -64,11 +76,11 @@ public sealed class TraceStore(int maxEvents = 2_000_000)
     {
         lock (_gate)
         {
-            var events = _chunks.SelectMany(x => x).OrderBy(x => x.Timestamp).ThenBy(x => x.Id).ToArray();
+            var events = _chunks.SelectMany(chunk => chunk).OrderBy(e => e.Timestamp).ThenBy(e => e.Id).ToArray();
             var missing = _sequences.Count == 0 ? 0 : Math.Max(0, _highestSequence - _sequences.Min + 1 - _sequences.Count);
             return new(_session, _frequency, _origin, events, new Dictionary<int, string>(_symbols),
                 new Dictionary<long, ObjectInfo>(_objects), _snapshot, _drops, missing, _faults,
-                _metadataDrops, _evicted, _recording);
+                _metadataDrops, _evicted, _recording) { Checkpoints = _checkpoints.ToArray() };
         }
     }
 }
