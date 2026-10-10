@@ -5,6 +5,7 @@
     <Project Path="src/DiagnosticsVisualizer.Runtime/DiagnosticsVisualizer.Runtime.csproj" />
     <Project Path="src/DiagnosticsVisualizer.Analysis/DiagnosticsVisualizer.Analysis.csproj" />
     <Project Path="src/DiagnosticsVisualizer.Weaver/DiagnosticsVisualizer.Weaver.csproj" />
+    <Project Path="src/DiagnosticsVisualizer.Transport/DiagnosticsVisualizer.Transport.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/DiagnosticsVisualizer.Tests/DiagnosticsVisualizer.Tests.csproj" />

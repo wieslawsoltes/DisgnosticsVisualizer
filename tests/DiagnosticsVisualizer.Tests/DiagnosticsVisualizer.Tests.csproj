@@ -5,6 +5,7 @@
     <ProjectReference Include="../../src/DiagnosticsVisualizer.Runtime/DiagnosticsVisualizer.Runtime.csproj" />
     <ProjectReference Include="../../src/DiagnosticsVisualizer.Analysis/DiagnosticsVisualizer.Analysis.csproj" />
     <ProjectReference Include="../../src/DiagnosticsVisualizer.Weaver/DiagnosticsVisualizer.Weaver.csproj" />
+    <ProjectReference Include="../../src/DiagnosticsVisualizer.Transport/DiagnosticsVisualizer.Transport.csproj" />
     <ProjectReference Include="../DiagnosticsVisualizer.Weaver.Fixtures/DiagnosticsVisualizer.Weaver.Fixtures.csproj" />
   </ItemGroup>
 </Project>
