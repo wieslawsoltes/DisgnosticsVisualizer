@@ -1,0 +1,1 @@
+<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><ProjectReference Include="../DiagnosticsVisualizer.Core/DiagnosticsVisualizer.Core.csproj" /><ProjectReference Include="../DiagnosticsVisualizer.Protocol/DiagnosticsVisualizer.Protocol.csproj" /></ItemGroup></Project>

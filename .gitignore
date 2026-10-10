@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+artifacts/
+.vs/
+.idea/
+*.user
+*.avtrace
+*.avtrace.tmp
+*.pfx
+*.snk
+.env

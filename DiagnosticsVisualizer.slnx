@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DiagnosticsVisualizer.Core/DiagnosticsVisualizer.Core.csproj" />
+    <Project Path="src/DiagnosticsVisualizer.Protocol/DiagnosticsVisualizer.Protocol.csproj" />
+    <Project Path="src/DiagnosticsVisualizer.Runtime/DiagnosticsVisualizer.Runtime.csproj" />
+    <Project Path="src/DiagnosticsVisualizer.Analysis/DiagnosticsVisualizer.Analysis.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DiagnosticsVisualizer.Tests/DiagnosticsVisualizer.Tests.csproj" />
+  </Folder>
+</Solution>
