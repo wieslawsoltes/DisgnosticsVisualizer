@@ -31,7 +31,7 @@ jobs:
       - run: dotnet test tests/DiagnosticsVisualizer.Tests -c Release --no-build --logger "trx;LogFileName=tests.trx"
       - name: Pack and validate every reusable library
         run: bash eng/pack.sh
-      - name: Execute an instrumented Avalonia application using the packaged build integration
+      - name: Execute instrumented Avalonia locally and through the collector
         run: bash eng/integration.sh
       - uses: actions/upload-artifact@v4
         if: always()
@@ -41,4 +41,4 @@ jobs:
             **/TestResults/*.trx
             artifacts/packages/*
             artifacts/integration/*report.json
-            artifacts/integration/workload.log
+            artifacts/integration/*.log

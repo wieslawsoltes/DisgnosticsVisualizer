@@ -59,7 +59,12 @@ public sealed class AvaloniaInspector : IDisposable
     public void RequestSnapshot(long selectedObject = 0)
     {
         if (selectedObject != 0) Interlocked.Exchange(ref _selected, selectedObject);
-        if (IsDisposed || Interlocked.Exchange(ref _pending, 1) != 0) return;
+        if (IsDisposed) return;
+        // Module initialization precedes platform setup. Never initialize Dispatcher.UIThread
+        // from a recording worker before Avalonia has installed its platform dispatcher.
+        if (Application.Current?.ApplicationLifetime is null)
+        { lock (_roots) if (_roots.Count == 0) return; }
+        if (Interlocked.Exchange(ref _pending, 1) != 0) return;
         Dispatcher.UIThread.Post(BeginSnapshot, DispatcherPriority.Background);
     }
     private void BeginSnapshot()
