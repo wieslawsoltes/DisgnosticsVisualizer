@@ -85,6 +85,8 @@ try {
   assert(restored.activeDocuments.includes('flame'));
   await page.screenshot({ path: 'artifacts/browser/restored-workspace.png', fullPage: true });
   stage = 'close palette and resize';
+  // Reload resets the browser's active element; acquire workspace focus as at startup.
+  await page.mouse.click(650, 220);
   await page.keyboard.press('Control+Shift+P');
   await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth().commandPaletteOpen);
   await page.keyboard.press('Escape');

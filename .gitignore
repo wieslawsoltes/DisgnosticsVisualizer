@@ -9,3 +9,5 @@ artifacts/
 *.pfx
 *.snk
 .env
+
+**/TestResults/
