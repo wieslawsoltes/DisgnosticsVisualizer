@@ -5,7 +5,11 @@ version="${1:-0.1.0-alpha.2}"
 root="$PWD"
 mkdir -p artifacts/integration
 sample=tests/DiagnosticsVisualizer.Sample
-# Consume produced packages: do not substitute project references for package validation.
+# Startup deep profiling deliberately exercises large synchronous bursts.
+export AVTRACE_EVENTS_PER_THREAD=65536
+export AVTRACE_MAX_THREADS=16
+export AVTRACE_SAMPLE_EVERY=1
+export AVTRACE_SUBSYSTEM_MASK=0xFFFFFFFFFFFFFFFF
 dotnet publish "$sample" -c Release -o artifacts/integration/target \
   -p:Version="$version" -p:UsePackagedDiagnostics=true \
   -p:DiagnosticsEnabled=true -p:DiagnosticsAllowSignedRewrite=true -p:DiagnosticsDeepProfile=true \
@@ -17,9 +21,6 @@ AVTRACE_ENABLED=1 AVTRACE_FILE="$root/artifacts/integration/sample.avtrace" \
 grep -q 'WORKLOAD_OK clicks=24 direct=23 items=4' artifacts/integration/workload.log
 verifier=tests/DiagnosticsVisualizer.CaptureVerifier/bin/Release/net10.0/DiagnosticsVisualizer.CaptureVerifier.dll
 dotnet "$verifier" artifacts/integration/sample.avtrace artifacts/integration/capture-report.json
-
-# A second real execution exercises reliable bootstrap/checkpoints, encrypted UDP data,
-# WebSocket viewing and a round-trip control request, using an ephemeral test-only credential.
 collector=src/DiagnosticsVisualizer.Collector/bin/Release/net10.0/DiagnosticsVisualizer.Collector.dll
 export AVTRACE_TOKEN
 AVTRACE_TOKEN="$(dotnet "$collector" --new-token)"
@@ -49,11 +50,16 @@ wait "$viewer_pid"
 viewer_pid=
 python3 - <<'PY'
 import json, pathlib, urllib.request
+root = pathlib.Path('artifacts/integration')
 with urllib.request.urlopen('http://127.0.0.1:4317/health', timeout=5) as response:
     health = json.load(response)
-pathlib.Path('artifacts/integration/network-report.json').write_text(json.dumps(health, indent=2))
+(root / 'network-report.json').write_text(json.dumps(health, indent=2))
 assert health['udpFrames'] > 0, health
 assert health['udpRejectedPackets'] == 0, health
+# This reference workload must retain every event locally; UDP delivery remains best-effort.
+for name in ('capture-report.json', 'remote-report.json'):
+    report = json.loads((root / name).read_text())
+    assert report['DroppedEvents'] == 0 and report['ProbeFaults'] == 0, (name, report)
 print(json.dumps(health))
 PY
 kill "$collector_pid"

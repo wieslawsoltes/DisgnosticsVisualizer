@@ -6,10 +6,11 @@ namespace DiagnosticsVisualizer.Agent.Avalonia;
 
 public sealed record AgentOptions
 {
-    public CaptureOptions Capture { get; init; } = new();
+    /// <summary>Environment defaults are read once. An explicit Capture initializer overrides them.</summary>
+    public CaptureOptions Capture { get; init; } = CaptureOptions.FromEnvironment();
     public string? TracePath { get; init; }
     public Uri? Endpoint { get; init; }
-    /// <summary>Optional encrypted telemetry destination. Endpoint remains the reliable control/checkpoint channel.</summary>
+    /// <summary>Optional encrypted telemetry destination; Endpoint remains the reliable channel.</summary>
     public IPEndPoint? UdpEndpoint { get; init; }
     public string? Token { get; init; }
     public TimeSpan FlushInterval { get; init; } = TimeSpan.FromMilliseconds(25);
