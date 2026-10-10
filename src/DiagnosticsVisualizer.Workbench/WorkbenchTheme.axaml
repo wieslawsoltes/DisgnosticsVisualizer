@@ -1,0 +1,50 @@
+<Styles xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Styles.Resources>
+    <SolidColorBrush x:Key="DvBackground">#0C111B</SolidColorBrush>
+    <SolidColorBrush x:Key="DvSurface">#141C29</SolidColorBrush>
+    <SolidColorBrush x:Key="DvBorder">#293449</SolidColorBrush>
+    <SolidColorBrush x:Key="DvForeground">#E1E9F6</SolidColorBrush>
+    <SolidColorBrush x:Key="DvMuted">#8899B4</SolidColorBrush>
+    <SolidColorBrush x:Key="DvAccent">#67D4FF</SolidColorBrush>
+  </Styles.Resources>
+  <Style Selector="Button.dv-toolbar">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="5" />
+    <Setter Property="Padding" Value="10,7" />
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="MinHeight" Value="30" />
+  </Style>
+  <Style Selector="Button.dv-primary">
+    <Setter Property="Background" Value="#214865" />
+    <Setter Property="Foreground" Value="#BDEEFF" />
+    <Setter Property="BorderBrush" Value="#397998" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="5" />
+    <Setter Property="FontSize" Value="11" />
+  </Style>
+  <Style Selector="DataGrid">
+    <Setter Property="Background" Value="#101620" />
+    <Setter Property="Foreground" Value="#DCE5F4" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="FontSize" Value="11" />
+  </Style>
+  <Style Selector="DataGridRow">
+    <Setter Property="MinHeight" Value="28" />
+  </Style>
+  <Style Selector="ListBoxItem">
+    <Setter Property="Padding" Value="2,1" />
+    <Setter Property="MinHeight" Value="25" />
+  </Style>
+  <Style Selector="TabItem">
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="MinHeight" Value="30" />
+    <Setter Property="Padding" Value="10,7" />
+  </Style>
+  <Style Selector="ToolChromeControl">
+    <Setter Property="Background" Value="#101620" />
+  </Style>
+  <Style Selector="DockControl">
+    <Setter Property="Background" Value="#0C111B" />
+  </Style>
+</Styles>
