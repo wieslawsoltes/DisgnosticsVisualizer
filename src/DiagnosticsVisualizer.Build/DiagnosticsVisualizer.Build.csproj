@@ -9,6 +9,7 @@
     <ProjectReference Include="../DiagnosticsVisualizer.Agent.Avalonia/DiagnosticsVisualizer.Agent.Avalonia.csproj" />
     <ProjectReference Include="../DiagnosticsVisualizer.Weaver/DiagnosticsVisualizer.Weaver.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
     <None Include="buildTransitive/DiagnosticsVisualizer.Build.targets" Pack="true" PackagePath="buildTransitive/" />
+    <None Include="_._" Pack="true" PackagePath="lib/net8.0/" />
   </ItemGroup>
   <Target Name="IncludeWeaverTool" DependsOnTargets="Build">
     <ItemGroup>

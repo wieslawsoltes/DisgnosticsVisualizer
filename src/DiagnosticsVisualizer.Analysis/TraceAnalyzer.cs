@@ -13,15 +13,20 @@ public static class TraceAnalyzer
 {
     public static AnalysisResult Analyze(TraceView trace, double frameBudgetMs = 1000d / 60)
     {
+        if (!double.IsFinite(frameBudgetMs) || frameBudgetMs <= 0 || frameBudgetMs > 60_000)
+            throw new ArgumentOutOfRangeException(nameof(frameBudgetMs));
         var findings = new List<Finding>(); var edges = new List<CausalEdge>();
         var byId = trace.Events.ToDictionary(x => x.Id);
         var children = new Dictionary<long, List<TraceEvent>>();
         foreach (var e in trace.Events)
         {
-            if (e.ParentId != 0 && byId.ContainsKey(e.ParentId))
+            if (e.ParentId != 0 && byId.TryGetValue(e.ParentId, out var parent))
             {
                 if (!children.TryGetValue(e.ParentId, out var list)) children[e.ParentId] = list = [];
-                list.Add(e); edges.Add(new(e.ParentId, e.Id, "synchronous parent"));
+                list.Add(e);
+                var kind = parent.ThreadId != e.ThreadId ? "cross-thread causal parent" :
+                    e.Timestamp < parent.Timestamp || e.End > parent.End ? "continuation parent" : "synchronous parent";
+                edges.Add(new(e.ParentId, e.Id, kind));
             }
         }
         var costs = trace.Events.Where(x => x.Kind == TraceEventKind.Span)
@@ -65,7 +70,7 @@ public static class TraceAnalyzer
             if (e.ObjectId != 0 && name.Contains("Invoke", StringComparison.Ordinal) && queued.Remove(e.ObjectId, out var producer) && producer.Timestamp <= e.Timestamp)
             {
                 edges.Add(new(producer.Id, e.Id, "dispatcher operation identity"));
-                var delay = trace.Milliseconds(e.Timestamp - producer.End);
+                var delay = trace.Milliseconds(Math.Max(0, e.Timestamp - producer.End));
                 if (delay > frameBudgetMs) findings.Add(new("Warning", "Dispatcher queue delay",
                     $"Operation #{e.ObjectId} waited approximately {delay:F2} ms after enqueue returned.", e.Id, e.ObjectId));
             }

@@ -11,8 +11,7 @@ using Avalonia.Threading;
 
 namespace DiagnosticsVisualizer.Sample;
 
-// This application deliberately contains no calls to the diagnostics API.
-// The Build package injects bootstrap and probes into the application output.
+// No diagnostics API calls: the package injects bootstrap and probes into output copies.
 internal static class Program
 {
     [STAThread]
@@ -33,7 +32,6 @@ public sealed class SampleApplication : Application
             window.Opened += (_, _) =>
             {
                 DispatcherTimer.RunOnce(window.Exercise, TimeSpan.FromMilliseconds(150));
-                // Leave the dispatcher running so sliced tree inspection and trace flushing execute.
                 DispatcherTimer.RunOnce(() => desktop.Shutdown(0), TimeSpan.FromSeconds(2));
             };
         }
@@ -41,7 +39,7 @@ public sealed class SampleApplication : Application
     }
 }
 
-public sealed class WorkloadWindow : Window
+public sealed partial class WorkloadWindow : Window
 {
     private readonly WorkloadModel _model = new();
     public WorkloadWindow()

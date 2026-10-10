@@ -18,5 +18,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/DiagnosticsVisualizer.Tests/DiagnosticsVisualizer.Tests.csproj" />
     <Project Path="tests/DiagnosticsVisualizer.Weaver.Fixtures/DiagnosticsVisualizer.Weaver.Fixtures.csproj" />
+    <Project Path="tests/DiagnosticsVisualizer.Sample/DiagnosticsVisualizer.Sample.csproj" />
+    <Project Path="tests/DiagnosticsVisualizer.CaptureVerifier/DiagnosticsVisualizer.CaptureVerifier.csproj" />
   </Folder>
 </Solution>
