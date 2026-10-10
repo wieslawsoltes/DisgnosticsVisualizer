@@ -5,61 +5,63 @@ using Dock.Model.Core;
 using Dock.Model.Mvvm;
 using Dock.Model.Mvvm.Controls;
 using Dock.Settings;
+using DiagnosticsVisualizer.Workbench.Persistence;
 
 namespace DiagnosticsVisualizer.Workbench.Docking;
 
-public sealed class PanelDocument : Document
-{
-    public required Control View { get; init; }
-}
-public sealed class PanelTool : Tool
-{
-    public required Control View { get; init; }
-}
+public sealed class PanelDocument : Document { public required Control View { get; init; } }
+public sealed class PanelTool : Tool { public required Control View { get; init; } }
 
+/// <summary>One reusable control per panel. Saved layouts contain identities, never view instances or credentials.</summary>
 public sealed class WorkbenchDockFactory(IReadOnlyDictionary<string, Control> views) : Factory
 {
     private readonly Dictionary<string, IDockable> _panels = new(StringComparer.Ordinal);
+    private IRootDock? _root;
     public IReadOnlyDictionary<string, IDockable> Panels => _panels;
-    public override IRootDock CreateLayout()
+    public override IRootDock CreateLayout() => CreateLayout(WorkspacePreset.Inspect);
+    public IRootDock CreateLayout(WorkspacePreset preset)
     {
         _panels.Clear();
-        PanelDocument Document(string id, string title)
+        foreach (var (id, view) in views)
         {
-            var panel = new PanelDocument { Id = id, Title = title, View = views[id], CanClose = false, CanFloat = true };
-            _panels[id] = panel; return panel;
+            var title = id switch
+            {
+                "timeline" => "Timeline", "flame" => "Flame chart", "causality" => "Causal chain", "systems" => "Subsystems",
+                "comparison" => "Compare", "visual" => "Visual tree", "logical" => "Logical tree", "properties" => "Properties & resources",
+                "details" => "Event details", "events" => "Event log", "findings" => "Findings", "costs" => "Hot paths",
+                "topdown" => "Call tree", "bottomup" => "Bottom-up", "statistics" => "Statistics", "threads" => "Thread activity",
+                "scene" => "Layout scene", "history" => "Snapshot history", "bookmarks" => "Bookmarks", "health" => "Capture health", _ => id
+            };
+            IDockable panel = id is "timeline" or "flame" or "causality" or "systems" or "comparison" or "topdown" or "bottomup" or "statistics" or "scene" or "history"
+                ? new PanelDocument { Id = id, Title = title, View = view, CanClose = false, CanFloat = true }
+                : new PanelTool { Id = id, Title = title, View = view, CanClose = false, CanFloat = true, CanPin = true };
+            _panels[id] = panel;
         }
-        PanelTool Tool(string id, string title)
-        {
-            var panel = new PanelTool { Id = id, Title = title, View = views[id], CanClose = false, CanFloat = true, CanPin = true };
-            _panels[id] = panel; return panel;
-        }
-        var timeline = Document("timeline", "Timeline"); var flame = Document("flame", "Flame chart");
-        var causal = Document("causality", "Causal chain"); var systems = Document("systems", "Subsystems");
-        var comparison = Document("comparison", "Compare");
-        var visual = Tool("visual", "Visual tree"); var logical = Tool("logical", "Logical tree");
-        var properties = Tool("properties", "Properties & resources"); var details = Tool("details", "Event details");
-        var events = Tool("events", "Event log"); var findings = Tool("findings", "Findings"); var costs = Tool("costs", "Hot paths");
-        var left = new ToolDock { Id = "left", Alignment = Alignment.Left, Proportion = .19, ActiveDockable = visual,
-            VisibleDockables = CreateList<IDockable>(visual, logical) };
-        var right = new ToolDock { Id = "right", Alignment = Alignment.Right, Proportion = .26, ActiveDockable = properties,
-            VisibleDockables = CreateList<IDockable>(properties, details) };
-        var documents = new DocumentDock { Id = "documents", IsCollapsable = false, Proportion = .68, ActiveDockable = timeline,
-            VisibleDockables = CreateList<IDockable>(timeline, flame, causal, systems, comparison), CanCreateDocument = false };
-        var bottom = new ToolDock { Id = "bottom", Alignment = Alignment.Bottom, Proportion = .32, ActiveDockable = findings,
-            VisibleDockables = CreateList<IDockable>(events, findings, costs) };
-        var center = new ProportionalDock { Id = "center", Orientation = Dock.Model.Core.Orientation.Vertical, Proportion = .55,
+        IList<IDockable> Panels(params string[] ids) => CreateList(ids.Where(_panels.ContainsKey).Select(id => _panels[id]).ToArray());
+        var left = new ToolDock { Id = "left", Alignment = Alignment.Left, Proportion = preset == WorkspacePreset.Inspect ? .18 : .14,
+            VisibleDockables = Panels("visual", "logical"), IsCollapsable = false };
+        var right = new ToolDock { Id = "right", Alignment = Alignment.Right, Proportion = .23,
+            VisibleDockables = Panels("properties", "details", "bookmarks", "health"), IsCollapsable = false };
+        var documents = new DocumentDock { Id = "documents", IsCollapsable = false, Proportion = .73, CanCreateDocument = false,
+            VisibleDockables = Panels("timeline", "flame", "topdown", "bottomup", "statistics", "causality", "scene", "history", "systems", "comparison") };
+        var bottom = new ToolDock { Id = "bottom", Alignment = Alignment.Bottom, Proportion = .27,
+            VisibleDockables = Panels("events", "findings", "costs", "threads"), IsCollapsable = false };
+        left.ActiveDockable = _panels.GetValueOrDefault("visual"); right.ActiveDockable = _panels.GetValueOrDefault(preset == WorkspacePreset.Profile ? "details" : "properties");
+        documents.ActiveDockable = _panels.GetValueOrDefault(preset switch { WorkspacePreset.Profile => "flame", WorkspacePreset.Compare => "comparison", _ => "timeline" });
+        bottom.ActiveDockable = _panels.GetValueOrDefault(preset == WorkspacePreset.Profile ? "costs" : "findings");
+        var center = new ProportionalDock { Id = "center", Orientation = Dock.Model.Core.Orientation.Vertical, Proportion = preset == WorkspacePreset.Inspect ? .59 : .63,
             VisibleDockables = CreateList<IDockable>(documents, new ProportionalDockSplitter(), bottom) };
         var main = new ProportionalDock { Id = "main", Orientation = Dock.Model.Core.Orientation.Horizontal,
             VisibleDockables = CreateList<IDockable>(left, new ProportionalDockSplitter(), center, new ProportionalDockSplitter(), right) };
         var root = CreateRootDock(); root.Id = "Root"; root.IsCollapsable = false; root.ActiveDockable = main; root.DefaultDockable = main;
-        root.VisibleDockables = CreateList<IDockable>(main);
+        root.VisibleDockables = CreateList<IDockable>(main); root.HiddenDockables = CreateList<IDockable>();
         root.LeftPinnedDockables = CreateList<IDockable>(); root.RightPinnedDockables = CreateList<IDockable>();
         root.TopPinnedDockables = CreateList<IDockable>(); root.BottomPinnedDockables = CreateList<IDockable>();
         return root;
     }
     public override void InitLayout(IDockable layout)
     {
+        _root = layout as IRootDock;
         ContextLocator = views.ToDictionary(pair => pair.Key, pair => (Func<object?>)(() => pair.Value));
         DockableLocator = _panels.ToDictionary(pair => pair.Key, pair => (Func<IDockable?>)(() => pair.Value));
         DockableLocator["Root"] = () => layout;
@@ -69,8 +71,27 @@ public sealed class WorkbenchDockFactory(IReadOnlyDictionary<string, Control> vi
     }
     public void Activate(string id)
     {
-        if (!_panels.TryGetValue(id, out var panel) || panel.Owner is not IDock dock) return;
-        dock.ActiveDockable = panel;
-        SetFocusedDockable(dock, panel);
+        if (!_panels.TryGetValue(id, out var panel) || _root is null) return;
+        // Panels introduced after a saved layout was created are retained in HiddenDockables.
+        if (_root.HiddenDockables?.Remove(panel) == true)
+        {
+            var target = Descendants(_root).OfType<IDock>().FirstOrDefault(d => panel is PanelDocument ? d is IDocumentDock : d is IToolDock t && t.Alignment == Alignment.Bottom)
+                ?? Descendants(_root).OfType<IDock>().FirstOrDefault(d => panel is PanelDocument ? d is IDocumentDock : d is IToolDock);
+            if (target is null) { _root.HiddenDockables.Add(panel); return; }
+            AddDockable(target, panel);
+        }
+        if (IsDockablePinned(panel, _root)) { PreviewPinnedDockable(panel); return; }
+        if (panel.Owner is not IDock dock) return;
+        SetActiveDockable(panel); SetFocusedDockable(dock, panel);
+    }
+    public static IEnumerable<IDockable> Descendants(IDockable root)
+    {
+        var stack = new Stack<IDockable>(); stack.Push(root); var seen = new HashSet<IDockable>(ReferenceEqualityComparer.Instance);
+        while (stack.Count > 0)
+        {
+            var node = stack.Pop(); if (!seen.Add(node)) continue; yield return node;
+            if (node is IDock dock) foreach (var child in dock.VisibleDockables ?? []) stack.Push(child);
+            if (node is IRootDock r) foreach (var window in r.Windows ?? []) if (window.Layout is { } layout) stack.Push(layout);
+        }
     }
 }

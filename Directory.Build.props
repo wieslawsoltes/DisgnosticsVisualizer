@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
-    <Version Condition="'$(Version)' == ''">0.1.0-alpha.2</Version>
+    <Version Condition="'$(Version)' == ''">0.1.0-alpha.3</Version>
     <Authors>Wiesław Šoltés</Authors>
     <RepositoryUrl>https://github.com/wieslawsoltes/DisgnosticsVisualizer</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
@@ -20,7 +20,8 @@
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <IsPackable>true</IsPackable>
     <AvaloniaVersion>11.3.22</AvaloniaVersion>
-    <DockVersion>11.3.11.4</DockVersion>
+    <DockVersion>11.3.22</DockVersion>
+    <DockModelVersion>12.1.0.7</DockModelVersion>
   </PropertyGroup>
   <ItemGroup>
     <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="/README.md" />

@@ -15,6 +15,9 @@ public sealed class App : Application
     }
     public override void OnFrameworkInitializationCompleted()
     {
+        if (!OperatingSystem.IsBrowser())
+            DiagnosticsVisualizer.Workbench.Persistence.WorkspaceServices.Storage = new DiagnosticsVisualizer.Workbench.Persistence.FileWorkspaceStorage(
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DiagnosticsVisualizer", "workspace.v1.json"));
         var workbench = new WorkbenchView();
         switch (ApplicationLifetime)
         {
@@ -23,7 +26,7 @@ public sealed class App : Application
                 {
                     Title = "Diagnostics Visualizer — Avalonia", Width = 1600, Height = 1000,
                     MinWidth = 900, MinHeight = 600, Content = workbench,
-                    Background = new global::Avalonia.Media.SolidColorBrush(global::Avalonia.Media.Color.Parse("#0C111B"))
+                    Background = new global::Avalonia.Media.SolidColorBrush(global::Avalonia.Media.Color.Parse("#1F2124"))
                 };
                 window.Closed += (_, _) => workbench.Dispose(); desktop.MainWindow = window; break;
             case ISingleViewApplicationLifetime single: single.MainView = workbench; break;

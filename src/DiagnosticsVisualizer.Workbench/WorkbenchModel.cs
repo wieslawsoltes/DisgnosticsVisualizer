@@ -16,7 +16,7 @@ public sealed record EventRow(TraceEvent Event, string Name, double StartMs, dou
     public long ObjectId => Event.ObjectId;
 }
 
-public sealed class WorkbenchModel : INotifyPropertyChanged, IAsyncDisposable
+public sealed partial class WorkbenchModel : INotifyPropertyChanged, IAsyncDisposable
 {
     private TraceStore _store = new(500_000);
     private readonly DispatcherTimer _refreshTimer;
@@ -53,7 +53,7 @@ public sealed class WorkbenchModel : INotifyPropertyChanged, IAsyncDisposable
     public void LoadDemo()
     {
         if (Connected) { ReportError("Disconnect before replacing a live session with the example."); return; }
-        Interlocked.Increment(ref _generation); _store = new(500_000);
+        ResetReview(); Interlocked.Increment(ref _generation); _store = new(500_000);
         foreach (var block in DemoTraceFactory.Create()) _store.Add(block);
         IsDemo = true; Source = "DEMO · synthetic Dashboard interaction"; Status = "Offline example · no application is being monitored"; Error = "";
         Apply(_store.GetView(), TraceAnalyzer.Analyze(_store.GetView())); SelectObject(5, false);
@@ -68,7 +68,7 @@ public sealed class WorkbenchModel : INotifyPropertyChanged, IAsyncDisposable
             var connection = endpoint.Scheme is "ws" or "wss"
                 ? (IFrameConnection)await WebSocketFrameConnection.ConnectAsync(endpoint, token)
                 : await StreamFrameConnection.ConnectAsync(endpoint, token, false);
-            _store = new(500_000); _connection = connection; _connectionStop = new();
+            ResetReview(); _store = new(500_000); _connection = connection; _connectionStop = new();
             var generation = Interlocked.Increment(ref _generation); var store = _store;
             IsDemo = false; Source = $"LIVE · {endpoint.Host}:{endpoint.Port}"; Status = "Connected · awaiting target batches";
             Raise(nameof(Connected)); _receiveTask = ReceiveAsync(connection, store, generation, _connectionStop.Token);
@@ -78,7 +78,7 @@ public sealed class WorkbenchModel : INotifyPropertyChanged, IAsyncDisposable
     }
     public async Task AttachInProcessAsync(IAsyncEnumerable<TraceBlock> stream, Func<TraceCommand, Task<TraceCommand>> execute)
     {
-        await DisconnectAsync(); _store = new(500_000); _connectionStop = new(); _localCommand = execute;
+        await DisconnectAsync(); ResetReview(); _store = new(500_000); _connectionStop = new(); _localCommand = execute;
         var store = _store; var generation = Interlocked.Increment(ref _generation);
         IsDemo = false; Source = "LIVE · in-process target"; Status = "In-process viewing contributes to target overhead"; Error = ""; Raise(nameof(Connected));
         _receiveTask = ReceiveLocalAsync(stream, store, generation, _connectionStop.Token);
@@ -129,12 +129,12 @@ public sealed class WorkbenchModel : INotifyPropertyChanged, IAsyncDisposable
     }
     public async Task ImportAsync(Stream stream, string name, CancellationToken cancellationToken = default)
     {
-        await DisconnectAsync(); Status = "Reading and validating trace…"; Error = "";
+        await DisconnectAsync(); ResetReview(); Status = "Reading and validating trace…"; Error = "";
         var store = new TraceStore(500_000); var generation = Interlocked.Increment(ref _generation);
         var result = await TraceFile.ReadAsync(stream, block => { store.Add(block); return ValueTask.CompletedTask; }, true, cancellationToken);
-        var prepared = await Task.Run(() => { var view = store.GetView(); return (view, analysis: TraceAnalyzer.Analyze(view)); }, cancellationToken);
+        var prepared = await Task.Run(() => { var view = store.GetView(); return Prepare(view); }, cancellationToken);
         if (generation != _generation) return;
-        _store = store; IsDemo = false; Source = $"FILE · {name}"; Apply(prepared.view, prepared.analysis);
+        _store = store; IsDemo = false; Source = $"FILE · {name}"; Apply(prepared.view, prepared.analysis, prepared.index, prepared.profile, prepared.selected, prepared.range);
         Status = result.TruncatedTail ? "Recovered complete batches; the final incomplete batch was discarded" : $"Imported {result.Events:N0} events in {result.Blocks:N0} batches";
         if (prepared.view.EvictedEvents > 0) Status += $" · retained last {prepared.view.Events.Length:N0} events";
         SelectObject(prepared.view.Snapshot.SelectedObject, false);
@@ -187,29 +187,35 @@ public sealed class WorkbenchModel : INotifyPropertyChanged, IAsyncDisposable
     public EventRow[] FilterEvents(string? filter, Subsystem? subsystem = null, bool selectedObjectOnly = false)
     {
         if (Trace is not { } trace) return [];
-        filter = filter?.Trim();
-        return trace.Events.Where(e => (subsystem is null || e.Subsystem == subsystem) && (!selectedObjectOnly || e.ObjectId == _selectedObject))
-            .Where(e => string.IsNullOrEmpty(filter) || trace.Name(e).Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-                e.Id.ToString() == filter || e.ObjectId.ToString() == filter || e.Subsystem.ToString().Contains(filter, StringComparison.OrdinalIgnoreCase))
-            .TakeLast(10_000).Select(e => new EventRow(e, trace.Name(e), trace.Milliseconds(e.Timestamp - trace.OriginTimestamp), trace.Milliseconds(e.Duration))).ToArray();
+        try
+        {
+            var predicate = TraceQuery.Compile(filter, trace); QueryError = "";
+            return trace.Events.Where(e => (Range is null || Range.Value.Intersects(e)) &&
+                (subsystem is null || e.Subsystem == subsystem) && (!selectedObjectOnly || e.ObjectId == _selectedObject) && predicate(e))
+                .TakeLast(10_000).Select(e => new EventRow(e, trace.Name(e), trace.Milliseconds(e.Timestamp - trace.OriginTimestamp), trace.Milliseconds(e.Duration))).ToArray();
+        }
+        catch (TraceQueryException error) { QueryError = error.Message; return []; }
     }
     public async Task RefreshAsync()
     {
         if (Volatile.Read(ref _disposed) != 0 || Interlocked.Exchange(ref _dirty, 0) == 0) return;
         if (Interlocked.Exchange(ref _refreshing, 1) != 0) { Interlocked.Exchange(ref _dirty, 1); return; }
-        var store = _store; var generation = _generation;
+        var store = _store; var generation = _generation; var range = Range;
         try
         {
-            var prepared = await Task.Run(() => { var view = store.GetView(); return (view, analysis: TraceAnalyzer.Analyze(view)); });
-            if (generation == _generation) Apply(prepared.view, prepared.analysis);
+            var prepared = await Task.Run(() => { var view = store.GetView(); return Prepare(view, range); });
+            if (generation == _generation) Apply(prepared.view, prepared.analysis, prepared.index, prepared.profile, prepared.selected, prepared.range);
         }
         catch (Exception error) { ReportError($"Analysis failed: {error.GetType().Name}: {error.Message}"); }
         finally { Volatile.Write(ref _refreshing, 0); }
     }
-    private void Apply(TraceView trace, AnalysisResult analysis)
+    private void Apply(TraceView trace, AnalysisResult analysis, TraceProfile? index = null, ProfileResult? profile = null, ProfileResult? selectedProfile = null, TraceRange? analyzedRange = null)
     {
         Trace = trace; Analysis = analysis; _events = trace.Events.ToDictionary(e => e.Id); Recording = trace.Recording;
-        TraceUpdated?.Invoke(trace, analysis);
+        _profileIndex = index ?? new TraceProfile(trace); FullProfile = profile ?? _profileIndex.Analyze();
+        Profile = Range is null ? FullProfile : analyzedRange == Range ? selectedProfile : null;
+        if (Range is { } range && Profile is null) _ = RefreshRangeAsync(range);
+        TraceUpdated?.Invoke(trace, analysis); ProfileUpdated?.Invoke();
         if (_selectedObject == 0) _selectedObject = trace.Snapshot.SelectedObject;
         SelectionChanged?.Invoke(_events.TryGetValue(_selectedEvent, out var selected) ? selected : null, _selectedObject, false);
         Raise(nameof(Trace)); Raise(nameof(Analysis));

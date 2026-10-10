@@ -1,16 +1,32 @@
 # Diagnostics Visualizer
 
-A cross-subsystem Avalonia trace recorder, inspector and Fluent docking workbench. Desktop and WebAssembly share controls, charts, analysis and session models. Target instrumentation rewrites **application output copies**, not Avalonia source or the NuGet cache.
+A cross-subsystem Avalonia trace recorder, inspector and Rider-style docking workbench. Desktop and WebAssembly share controls, charts, analysis and session models. Target instrumentation rewrites **application output copies**, not Avalonia source or the NuGet cache.
 
 [Browser workbench](https://wieslawsoltes.github.io/DisgnosticsVisualizer/) · [Build/integration](https://github.com/wieslawsoltes/DisgnosticsVisualizer/actions/workflows/build.yml) · [Browser verification/deployment](https://github.com/wieslawsoltes/DisgnosticsVisualizer/actions/workflows/browser.yml)
 
-**0.1.0-alpha.2.** An actively validated implementation, not a claim of complete coverage of every Avalonia release or Chrome DevTools feature. The browser starts with a labelled synthetic example; it never pretends to be attached to an application. Check the deployment workflow for the current publication status.
+**0.1.0-alpha.3.** An actively validated implementation, not a claim of complete coverage of every Avalonia release or Chrome DevTools feature. The browser starts with a labelled synthetic example; it never pretends to be attached to an application. Check the deployment workflow for the current publication status.
 
 ## Workbench
 
-Zoomable subsystem timeline, thread flame chart, selected-event causal graph, subsystem map, baseline cost comparison, independent visual/logical trees, property/precedence/resource inspection, layout bounds, event details, filterable event log, hot paths and evidence-labelled findings. Panels use Dock's tabbing, splitting, pinning and floating infrastructure; browser floating windows are managed within the page. Selection is shared between trees, events and charts.
+Zoomable subsystem timeline, thread flame chart, selected-event causal graph, subsystem map, baseline cost comparison, independent visual/logical trees, property/precedence/resource inspection, layout scene, checkpoint differences, event details, queryable event log, calling-context trees, latency statistics, hot paths and evidence-labelled findings. Selection and timeline viewports are synchronized. Panels use Dock's tabbing, splitting, pinning and floating infrastructure; browser floating windows are managed within the page.
 
-Open `.avtrace`, recover complete batches from a truncated final write, export retained data or Chrome Trace JSON, compare workload traces, or connect to a collector. `Ctrl+Shift+P` opens commands; `Ctrl+O` opens, `Ctrl+S` saves, `Ctrl+L` connects, and `F8` pauses/resumes a connected target. Drag timelines to pan, Ctrl+wheel to zoom, and double-click to fit.
+The actual **Rider Dark compact preset** is provided by Dock's Avalonia 11 package lane: `Dock.Avalonia.v11` and `Dock.Avalonia.Themes.Fluent.v11` **11.3.22**, shared `Dock.Model.Mvvm` **12.1.0.7**. Avalonia remains **11.3.22**. Do not mix unsuffixed Avalonia 12 UI packages into this build.
+
+Inspect, Profile and Compare presets are available from the toolbar and command palette. Panel activation rails, cached documents, and a single-owner view host preserve controls across docking/template changes. Workspace topology, selected tabs, proportions, pinned panels and floating window geometry are saved every two seconds and on detach. Desktop settings live under local application data; browser settings use local storage. Only whitelisted panel identities and geometry are stored, never trace content or tokens. Invalid, oversized, deeply nested or duplicate layouts are rejected before the live layout changes.
+
+Drag the global span-activity overview to select a half-open analysis range. Statistics, top-down/bottom-up calling contexts, thread span coverage and the event log use this range. Percentiles use observed, range-clipped durations. Exclusive time subtracts the **union of same-thread nested child intervals**, not asynchronous continuation time. Span coverage includes waits inside instrumented scopes and is **not CPU utilization**. Call-tree depth/node limits are explicit. Timeline/flame charts preserve zoom during same-session refreshes.
+
+Event queries support implicit AND, OR, NOT, parentheses, quoted names, exact 64-bit identifiers and duration units:
+
+```text
+subsystem:Layout duration>=1ms
+(name:Measure or name:Arrange) not thread=8
+object=12 duration>500us
+```
+
+The layout scene visualizes recorded visual-parent-relative layout bounds, not unrecorded render transforms/clipping. Snapshot history retains up to 32 checkpoints/65,536 nodes, separates visual/logical/templated-parent changes, and preserves truncated-presence uncertainty. Checkpoint labels identify batches, not atomic event-time states. Bookmarks currently live in the loaded session.
+
+Open `.avtrace`, recover complete batches from a truncated final write, export retained data or Chrome Trace JSON, compare workload traces, or connect to a collector. `Ctrl+Shift+P` opens commands; `Ctrl+O` opens, `Ctrl+S` saves, `Ctrl+L` connects, `Ctrl+B` bookmarks, and `F8` pauses/resumes a connected target. Drag timelines to pan, Ctrl+wheel to zoom, and double-click to fit.
 
 ## Projects
 
@@ -19,24 +35,25 @@ Open `.avtrace`, recover complete batches from a truncated final write, export r
 | Core | Events, metadata, snapshots and limits | Yes |
 | Protocol | Bounded framing, delta/varint events, CRC, trace files, encrypted datagrams | Yes |
 | Runtime | Injection ABI, per-thread buffers, weak identities, causal context and suppression | Yes |
-| Analysis | Ingestion, interval queries, self-time, causality, findings and comparisons | Yes |
+| Analysis | Ingestion, interval queries, self-time, causality, range statistics, queries and comparisons | Yes |
 | Transport | Authenticated TCP/TLS/WebSocket, UDP sender and bounded queues | Yes |
 | Agent.Avalonia | Target capture host, sliced inspection and weak notification observation | Yes |
-| Charts | Timeline/flame, causality, subsystem and cost charts | Yes |
-| Controls | Virtualized trees, properties, layout box and event details | Yes |
-| Workbench | Reusable dockable workspace, shared model and styling | Yes |
+| Charts | Timeline/flame, activity, causality, subsystem and cost charts | Yes |
+| Controls | Virtualized trees, properties, layout scene, view leases and event details | Yes |
+| Workbench | Reusable dockable workspace, persistence, shared model and styling | Yes |
 | Build | Opt-in MSBuild integration and embedded weaver | Yes |
 | Weaver | Mono.Cecil rewrite, manifest and checksum-checked restore | Embedded |
 | Collector | Native target gateway, browser relay and optional archive | Executable |
 | App / Desktop / Browser | Shared application and thin platform launchers | Applications |
 
-Reusable libraries target .NET 8. Tools/tests/desktop use .NET 10; the browser uses .NET 10 WebAssembly. Pinned UI baseline: Avalonia **11.3.22**, Dock **11.3.11.4**. Actual rewritten assemblies and hook matches appear in the weaving manifest.
+Reusable libraries target .NET 8. Tools/tests/desktop use .NET 10; the browser uses .NET 10 WebAssembly. Actual rewritten assemblies and hook matches appear in the weaving manifest.
 
 ## Build and run
 
 ```sh
 dotnet build DiagnosticsVisualizer.slnx -c Release
 dotnet test tests/DiagnosticsVisualizer.Tests -c Release --no-build
+dotnet test tests/DiagnosticsVisualizer.UiTests -c Release --no-build
 dotnet run --project src/DiagnosticsVisualizer.Desktop -c Release
 ```
 
@@ -55,7 +72,7 @@ Build the local feed with `bash eng/pack.sh`. Add this reference to the applicat
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="DiagnosticsVisualizer.Build" Version="0.1.0-alpha.2" />
+  <PackageReference Include="DiagnosticsVisualizer.Build" Version="0.1.0-alpha.3" />
 </ItemGroup>
 <PropertyGroup>
   <DiagnosticsEnabled>true</DiagnosticsEnabled>
@@ -125,15 +142,15 @@ Warm producer probes use bounded per-thread rings and cached metadata. A unit te
 
 CaptureOptions configures capacities, identity/metadata budgets, sampling and subsystem masks. Event loss, probe faults, metadata drops, missing batches and retained-history eviction are accounted separately. Rendering has a display budget/density fallback; causal neighborhoods are bounded. No universal overhead percentage or GPU timing claim is made. Measure representative workloads with recording disabled, balanced, deep, and with/without the viewer.
 
-CI builds/tests, validates all ten packages, and publishes/launches an **actual rewritten headless Avalonia application consuming those packages**, with no diagnostics API calls in its source. A second execution exercises TCP establishment, encrypted UDP, WebSocket viewing and a control round trip. Reports and logs are retained. Browser CI launches the real published WebAssembly app in Chromium, checking model/visual state, keyboard commands, causal navigation, screenshots and console/network errors. Workflow results, not the presence of tests, determine which gates passed.
+CI builds/tests, validates all ten packages, and publishes/launches an **actual rewritten headless Avalonia application consuming those packages**, with no diagnostics API calls in its source. A second execution exercises TCP establishment, encrypted UDP, WebSocket viewing and a control round trip. Reports and logs are retained. Headless UI tests exercise range queries, invalid settings, view ownership, actual pinning/floating and layout restoration. Browser CI launches the actual published WebAssembly app in Chromium, checking keyboard commands, causal navigation, pointer range selection, saved-workspace reload, screenshots and console/network errors. Workflow results, not the presence of tests, determine which gates passed.
 
 ## Coverage boundaries
 
-Hooks cover layout, styles/selectors, resource lookups, templates/themes, dispatcher operations, routed events, properties/bindings, XAML, notifications, both trees, rendering/composition and animation. A hook match does not prove execution: inspect the manifest together with the workload capture. Managed rendering/compositor spans measure CPU execution, **not GPU time**.
+Hooks cover layout, styles/selectors, resource lookups, templates/themes, dispatcher operations, routed events, properties/bindings, XAML, notifications, both trees, rendering/composition and animation. A hook match does not prove execution: inspect the manifest together with the workload capture. Managed rendering/compositor spans measure elapsed managed execution (including waits), **not GPU time**.
 
 Snapshots are weakly consistent checkpoints, not a stop-the-world heap image. SnapshotDiffer keeps visual/logical/templated-parent changes separate and treats absence in truncated snapshots as unknown. The wire codec delta-encodes event fields inside independently decodable batches; snapshots are full checkpoints, **not an inter-packet tree-delta protocol**. Findings distinguish recorded relationships from inferred symptoms.
 
-Not yet provided: arbitrary-process CLR profiler/ReJIT attachment, exhaustive asynchronous causality, XAML source-map navigation, heap leak proof, GPU counters, persistent docking layouts, or complete per-version subsystem semantic inspectors.
+Not yet provided: arbitrary-process CLR profiler/ReJIT attachment, exhaustive asynchronous causality, XAML source-map navigation, heap leak proof, GPU counters, or complete per-version subsystem semantic inspectors.
 
 ## Publishing
 

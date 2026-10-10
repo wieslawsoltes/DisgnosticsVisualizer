@@ -1,11 +1,11 @@
 <Styles xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <Styles.Resources>
-    <SolidColorBrush x:Key="DvBackground">#0C111B</SolidColorBrush>
-    <SolidColorBrush x:Key="DvSurface">#141C29</SolidColorBrush>
-    <SolidColorBrush x:Key="DvBorder">#293449</SolidColorBrush>
-    <SolidColorBrush x:Key="DvForeground">#E1E9F6</SolidColorBrush>
-    <SolidColorBrush x:Key="DvMuted">#8899B4</SolidColorBrush>
-    <SolidColorBrush x:Key="DvAccent">#67D4FF</SolidColorBrush>
+    <SolidColorBrush x:Key="DvBackground">#1F2124</SolidColorBrush>
+    <SolidColorBrush x:Key="DvSurface">#2B2D30</SolidColorBrush>
+    <SolidColorBrush x:Key="DvBorder">#3C3F41</SolidColorBrush>
+    <SolidColorBrush x:Key="DvForeground">#DFE1E5</SolidColorBrush>
+    <SolidColorBrush x:Key="DvMuted">#9DA0A8</SolidColorBrush>
+    <SolidColorBrush x:Key="DvAccent">#4C9FFF</SolidColorBrush>
   </Styles.Resources>
   <Style Selector="Button.dv-toolbar">
     <Setter Property="Background" Value="Transparent" />
@@ -16,21 +16,26 @@
     <Setter Property="MinHeight" Value="30" />
   </Style>
   <Style Selector="Button.dv-primary">
-    <Setter Property="Background" Value="#214865" />
-    <Setter Property="Foreground" Value="#BDEEFF" />
-    <Setter Property="BorderBrush" Value="#397998" />
+    <Setter Property="Background" Value="#35537A" />
+    <Setter Property="Foreground" Value="#FFFFFF" />
+    <Setter Property="BorderBrush" Value="#4C9FFF" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="5" />
     <Setter Property="FontSize" Value="11" />
   </Style>
   <Style Selector="DataGrid">
-    <Setter Property="Background" Value="#101620" />
-    <Setter Property="Foreground" Value="#DCE5F4" />
+    <Setter Property="Background" Value="#1F2124" />
+    <Setter Property="Foreground" Value="#DFE1E5" />
     <Setter Property="BorderThickness" Value="0" />
     <Setter Property="FontSize" Value="11" />
   </Style>
+  <Style Selector="DataGridColumnHeader">
+    <Setter Property="Background" Value="#2B2D30" />
+    <Setter Property="Foreground" Value="#9DA0A8" />
+    <Setter Property="FontSize" Value="11" />
+  </Style>
   <Style Selector="DataGridRow">
-    <Setter Property="MinHeight" Value="28" />
+    <Setter Property="MinHeight" Value="26" />
   </Style>
   <Style Selector="ListBoxItem">
     <Setter Property="Padding" Value="2,1" />
@@ -42,9 +47,9 @@
     <Setter Property="Padding" Value="10,7" />
   </Style>
   <Style Selector="ToolChromeControl">
-    <Setter Property="Background" Value="#101620" />
+    <Setter Property="Background" Value="#1F2124" />
   </Style>
   <Style Selector="DockControl">
-    <Setter Property="Background" Value="#0C111B" />
+    <Setter Property="Background" Value="#1F2124" />
   </Style>
 </Styles>

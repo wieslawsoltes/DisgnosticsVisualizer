@@ -19,6 +19,19 @@ try {
   const health = await page.evaluate(() => globalThis.getDiagnosticsVisualizerHealth());
   assert(health.events > 5000 && health.nodes >= 30 && health.findings > 0);
   assert.equal(health.error, '');
+  assert.equal(health.theme, 'Rider Dark');
+  assert.equal(health.dockSurface?.toLowerCase(), '#ff2b2d30');
+  assert(health.profileOperations > 15 && health.checkpoints >= 3);
+  const command = async text => {
+    stage = `command: ${text}`;
+    await page.keyboard.press('Control+Shift+P');
+    await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth().commandPaletteOpen);
+    await page.keyboard.press('Control+A');
+    await page.keyboard.type(text, { delay: 12 });
+    await page.waitForFunction(text => globalThis.getDiagnosticsVisualizerHealth().commandQuery === text, text);
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => !globalThis.getDiagnosticsVisualizerHealth().commandPaletteOpen);
+  };
   await page.screenshot({ path: 'artifacts/browser/workbench.png', fullPage: true });
   stage = 'open command palette';
   await page.mouse.click(650, 220);
@@ -39,7 +52,41 @@ try {
     return health.causalGraphVisible && !health.commandPaletteOpen && health.activeDocuments.includes('causality');
   }, null, { timeout: 10_000 });
   await page.screenshot({ path: 'artifacts/browser/causality.png', fullPage: true });
+  await command('Show Statistics');
+  await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth().statisticsVisible);
+  stage = 'select analysis range through real pointer input';
+  const overview = (await page.evaluate(() => globalThis.getDiagnosticsVisualizerHealth())).overview;
+  assert(overview.width > 1000 && overview.height > 50);
+  await page.mouse.move(overview.x + overview.width * .2, overview.y + overview.height * .65);
+  await page.mouse.down();
+  await page.mouse.move(overview.x + overview.width * .4, overview.y + overview.height * .65, { steps: 15 });
+  await page.mouse.up();
+  await page.waitForFunction(() => {
+    const h = globalThis.getDiagnosticsVisualizerHealth(); return h.hasRange && h.rangeEvents > 0 && h.rangeEvents < h.events;
+  });
+  await page.screenshot({ path: 'artifacts/browser/range-statistics.png', fullPage: true });
+  await command('Clear analysis range');
+  await page.waitForFunction(() => !globalThis.getDiagnosticsVisualizerHealth().hasRange);
+  await command('Show Layout scene');
+  await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth().sceneVisible);
+  await page.screenshot({ path: 'artifacts/browser/layout-scene.png', fullPage: true });
+  await command('Show Snapshot history');
+  await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth().activeDocuments.includes('history'));
+  await page.screenshot({ path: 'artifacts/browser/snapshot-history.png', fullPage: true });
+  await command('Workspace: Profile');
+  stage = 'persist workspace across real browser reload';
+  await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth().workspacePreset === 'Profile');
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem('diagnostics.workspace.v1') ?? 'null')?.Preset === 1);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth?.().visualCount > 100, null, { timeout: 180_000 });
+  const restored = await page.evaluate(() => globalThis.getDiagnosticsVisualizerHealth());
+  assert.equal(restored.workspacePreset, 'Profile');
+  assert.equal(restored.workspaceError, null);
+  assert(restored.activeDocuments.includes('flame'));
+  await page.screenshot({ path: 'artifacts/browser/restored-workspace.png', fullPage: true });
   stage = 'close palette and resize';
+  // Reload resets the browser's active element; acquire workspace focus as at startup.
+  await page.mouse.click(650, 220);
   await page.keyboard.press('Control+Shift+P');
   await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth().commandPaletteOpen);
   await page.keyboard.press('Escape');
@@ -49,7 +96,7 @@ try {
   await page.screenshot({ path: 'artifacts/browser/compact.png', fullPage: true });
   const finalHealth = await page.evaluate(() => globalThis.getDiagnosticsVisualizerHealth());
   assert.equal(finalHealth.error, '');
-  await writeFile('artifacts/browser/health.json', JSON.stringify({ initial: health, final: finalHealth, keyboardCommands: true }, null, 2));
+  await writeFile('artifacts/browser/health.json', JSON.stringify({ initial: health, final: finalHealth, keyboardCommands: true, riderPreset: true, pointerRange: true, persistedWorkspace: true }, null, 2));
   assert.deepEqual(errors, [], 'Browser errors or missing assets were detected.');
   console.log(JSON.stringify({ status: 'passed', ...finalHealth }));
 } catch (error) {

@@ -102,7 +102,12 @@ public static class DemoTraceFactory
         {
             SessionId = session, Sequence = i + 1, Frequency = 1_000_000, OriginTimestamp = 0,
             UtcStartTicks = new DateTime(2026, 10, 10, 12, 0, 0, DateTimeKind.Utc).Ticks,
-            Recording = false, Symbols = symbols, Objects = objects, Events = chunks[i], Snapshot = i == 0 ? snapshot : null
+            Recording = false, Symbols = symbols, Objects = objects, Events = chunks[i], Snapshot = snapshot with
+            {
+                Nodes = snapshot.Nodes.Select(node => node.Id == 5 ? node with { Width = 188 + i * 8, Classes = i == 0 ? "primary" : "primary:pointerover" } : node).ToArray(),
+                Properties = snapshot.Properties.Select(property => property.ObjectId == 5 && property.Name == "Bounds"
+                    ? property with { Value = $"16, 88, {188 + i * 8}, 36" } : property).ToArray()
+            }
         });
         return blocks;
     }

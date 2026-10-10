@@ -35,6 +35,7 @@ jobs:
           echo "value=$version" >> "$GITHUB_OUTPUT"
       - run: dotnet build DiagnosticsVisualizer.slnx -c Release
       - run: dotnet test tests/DiagnosticsVisualizer.Tests -c Release --no-build
+      - run: dotnet test tests/DiagnosticsVisualizer.UiTests -c Release --no-build
       - run: bash eng/pack.sh "$VERSION"
         env:
           VERSION: ${{ steps.version.outputs.value }}

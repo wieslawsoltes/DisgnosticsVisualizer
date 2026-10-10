@@ -32,11 +32,11 @@ public sealed class EventDetailsControl : UserControl
         _grid.ItemsSource = new[]
         {
             new DetailRow("Subsystem", e.Subsystem.ToString()), new("Kind", e.Kind.ToString()),
-            new("Event ID", e.Id.ToString()), new("Synchronous parent", e.ParentId == 0 ? "Not recorded" : e.ParentId.ToString()),
+            new("Event ID", e.Id.ToString()), new("Causal parent", e.ParentId == 0 ? "Not recorded" : e.ParentId.ToString()),
             new("Object", e.ObjectId.ToString()), new("Related object", e.RelatedId.ToString()), new("Managed thread", e.ThreadId.ToString()),
             new("Start", $"{trace.Milliseconds(e.Timestamp - trace.OriginTimestamp):F6} ms"), new("Inclusive duration", $"{trace.Milliseconds(e.Duration):F6} ms"),
             new("Clock frequency", $"{trace.Frequency:N0} Hz"), new("Data 0", e.Data0.ToString()), new("Data 1", e.Data1.ToString()),
-            new("Interpretation", "CPU wall duration on the source monotonic clock. A span is not a GPU timestamp."),
+            new("Interpretation", "Elapsed managed span on the source monotonic clock; includes waits, not CPU utilization or GPU completion."),
             new("Loss caveat", $"{trace.DroppedEvents:N0} events dropped; {trace.MissingBlocks:N0} batch gaps; {trace.EvictedEvents:N0} events outside retained history.")
         };
     }

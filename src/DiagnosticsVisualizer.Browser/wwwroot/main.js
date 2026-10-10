@@ -4,6 +4,10 @@ const message = document.getElementById('loading-message');
 const fatal = document.getElementById('fatal');
 try {
   const runtime = await dotnet.withDiagnosticTracing(false).create();
+  runtime.setModuleImports('diagnosticsStorage', {
+    readWorkspace: () => { try { return localStorage.getItem('diagnostics.workspace.v1'); } catch { return null; } },
+    writeWorkspace: json => { try { localStorage.setItem('diagnostics.workspace.v1', json); } catch { /* Private browsing or quota: continue without persistence. */ } }
+  });
   message.textContent = 'Starting the trace workspace…';
   const config = runtime.getConfig();
   await runtime.runMain(config.mainAssemblyName, []);
