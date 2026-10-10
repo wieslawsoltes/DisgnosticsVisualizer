@@ -8,6 +8,7 @@
     <Project Path="src/DiagnosticsVisualizer.Transport/DiagnosticsVisualizer.Transport.csproj" />
     <Project Path="src/DiagnosticsVisualizer.Agent.Avalonia/DiagnosticsVisualizer.Agent.Avalonia.csproj" />
     <Project Path="src/DiagnosticsVisualizer.Collector/DiagnosticsVisualizer.Collector.csproj" />
+    <Project Path="src/DiagnosticsVisualizer.Build/DiagnosticsVisualizer.Build.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/DiagnosticsVisualizer.Tests/DiagnosticsVisualizer.Tests.csproj" />

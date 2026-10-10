@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IncludeBuildOutput>false</IncludeBuildOutput><IncludeSymbols>false</IncludeSymbols>
+    <PackageType>Dependency</PackageType>
+    <Description>Opt-in MSBuild integration for reversible Avalonia application-output instrumentation.</Description>
+    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);IncludeWeaverTool</TargetsForTfmSpecificContentInPackage>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../DiagnosticsVisualizer.Agent.Avalonia/DiagnosticsVisualizer.Agent.Avalonia.csproj" />
+    <ProjectReference Include="../DiagnosticsVisualizer.Weaver/DiagnosticsVisualizer.Weaver.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
+    <None Include="buildTransitive/DiagnosticsVisualizer.Build.targets" Pack="true" PackagePath="buildTransitive/" />
+  </ItemGroup>
+  <Target Name="IncludeWeaverTool" DependsOnTargets="Build">
+    <ItemGroup>
+      <TfmSpecificPackageFile Include="$(MSBuildThisFileDirectory)../DiagnosticsVisualizer.Weaver/bin/$(Configuration)/net8.0/*.dll;$(MSBuildThisFileDirectory)../DiagnosticsVisualizer.Weaver/bin/$(Configuration)/net8.0/*.json">
+        <PackagePath>tools/net8.0/any/</PackagePath>
+      </TfmSpecificPackageFile>
+    </ItemGroup>
+  </Target>
+</Project>

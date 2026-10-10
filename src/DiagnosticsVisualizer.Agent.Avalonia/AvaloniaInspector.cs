@@ -16,10 +16,7 @@ using DiagnosticsVisualizer.Runtime;
 
 namespace DiagnosticsVisualizer.Agent.Avalonia;
 
-/// <summary>
-/// Weakly-consistent tree checkpoints, captured in small dispatcher slices. A snapshot is not
-/// an atomic application freeze; trace spans remain the authority for chronological ordering.
-/// </summary>
+/// <summary>Weakly-consistent tree checkpoints captured in bounded dispatcher slices, never an application freeze.</summary>
 public sealed class AvaloniaInspector : IDisposable
 {
     private sealed class SnapshotWork(long selected)
@@ -47,9 +44,7 @@ public sealed class AvaloniaInspector : IDisposable
     { _session = session; _options = options ?? new(); _redactor = new(_options); }
     public void AttachRoot(Visual root)
     {
-        ArgumentNullException.ThrowIfNull(root);
-        lock (_roots) _roots.Add(new(root));
-        RequestSnapshot();
+        ArgumentNullException.ThrowIfNull(root); lock (_roots) _roots.Add(new(root)); RequestSnapshot();
     }
     public void ExcludeRoot(Visual root)
     { ArgumentNullException.ThrowIfNull(root); _excludedRoots.GetValue(root, static _ => new()); }
@@ -76,15 +71,12 @@ public sealed class AvaloniaInspector : IDisposable
         {
             var work = new SnapshotWork(Interlocked.Read(ref _selected));
             lock (_roots)
-            {
                 for (var i = _roots.Count - 1; i >= 0; i--)
                     if (_roots[i].TryGetTarget(out var root)) work.Pending.Push(root); else _roots.RemoveAt(i);
-            }
             switch (Application.Current?.ApplicationLifetime)
             {
                 case IClassicDesktopStyleApplicationLifetime desktop:
-                    foreach (var window in desktop.Windows) work.Pending.Push(window);
-                    break;
+                    foreach (var window in desktop.Windows) work.Pending.Push(window); break;
                 case ISingleViewApplicationLifetime { MainView: { } view }: work.Pending.Push(view); break;
             }
             ProcessSlice(work);
@@ -113,8 +105,7 @@ public sealed class AvaloniaInspector : IDisposable
                 Observe(value);
                 if (styled?.DataContext is { } context)
                 {
-                    Observe(context);
-                    work.Relations.Add(new(id, _session.GetObjectId(context), "DataContext", context.GetType().FullName ?? context.GetType().Name));
+                    Observe(context); work.Relations.Add(new(id, _session.GetObjectId(context), "DataContext", context.GetType().FullName ?? context.GetType().Name));
                 }
                 if (value is ItemsControl items)
                 {
@@ -132,7 +123,7 @@ public sealed class AvaloniaInspector : IDisposable
             _session.SetSnapshot(new(work.Nodes.ToArray(), properties, relations, selected,
                 work.Truncated || relations.Length != work.Relations.Count));
         }
-        catch (Exception error) { Report(error); }
+        catch (Exception error) { work.Pending.Clear(); Report(error); }
         finally { if (work.Pending.Count == 0) Volatile.Write(ref _pending, 0); }
     }
     public PropertySnapshot[] InspectProperties(long id, List<RelationSnapshot>? relations = null)
@@ -153,20 +144,20 @@ public sealed class AvaloniaInspector : IDisposable
         }
         try
         {
-            foreach (var frame in value.GetValueStoreDiagnostic().AppliedFrames.Take(128))
+            foreach (var frame in value.GetValueStoreDiagnostic().GetAppliedFrames())
             {
                 var source = frame.Source switch
                 {
                     Style style => style.Selector?.ToString() ?? "Style",
                     ControlTheme theme => $"ControlTheme {theme.TargetType?.Name}",
-                    null => frame.Type.ToString(),
+                    null => frame.Type,
                     _ => frame.Source.GetType().Name
                 };
-                foreach (var entry in frame.Values.Take(128))
+                foreach (var entry in frame.Values)
                 {
                     if (properties.Count >= TraceLimits.MaxPropertiesPerSnapshot) break;
                     properties.Add(new(id, entry.Property.Name, $"{frame.Type} frame · {(frame.IsActive ? "active" : "inactive")}",
-                        _redactor.Format(entry.Property.Name, entry.Value), frame.Priority.ToString(), ValueRedactor.Limit(source)));
+                        _redactor.Format(entry.Property.Name, entry.Value), frame.Priority, ValueRedactor.Limit(source)));
                 }
                 if (frame.Source is { } frameSource) relations?.Add(new(id, _session.GetObjectId(frameSource), "Value frame", ValueRedactor.Limit(source)));
             }
@@ -188,8 +179,7 @@ public sealed class AvaloniaInspector : IDisposable
             if (control.Theme is { } theme) relations?.Add(new(id, _session.GetObjectId(theme), "ControlTheme", theme.TargetType?.Name ?? ""));
             foreach (var template in control.DataTemplates.Take(128)) relations?.Add(new(id, _session.GetObjectId(template), "DataTemplate", template.GetType().Name));
         }
-        if (value is TemplatedControl { Template: { } templateValue })
-            relations?.Add(new(id, _session.GetObjectId(templateValue), "ControlTemplate", templateValue.GetType().Name));
+        if (value is TemplatedControl { Template: { } templateValue }) relations?.Add(new(id, _session.GetObjectId(templateValue), "ControlTemplate", templateValue.GetType().Name));
         return properties.Take(TraceLimits.MaxPropertiesPerSnapshot).ToArray();
     }
     private void Report(Exception error)

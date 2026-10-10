@@ -1,0 +1,30 @@
+<Project>
+  <PropertyGroup>
+    <DiagnosticsEnabled Condition="'$(DiagnosticsEnabled)' == ''">false</DiagnosticsEnabled>
+    <DiagnosticsAllowSignedRewrite Condition="'$(DiagnosticsAllowSignedRewrite)' == ''">false</DiagnosticsAllowSignedRewrite>
+    <DiagnosticsDeepProfile Condition="'$(DiagnosticsDeepProfile)' == ''">false</DiagnosticsDeepProfile>
+    <DiagnosticsWeaverPath Condition="'$(DiagnosticsWeaverPath)' == ''">$(MSBuildThisFileDirectory)../tools/net8.0/any/DiagnosticsVisualizer.Weaver.dll</DiagnosticsWeaverPath>
+    <DiagnosticsDotNetHost Condition="'$(DiagnosticsDotNetHost)' == ''">dotnet</DiagnosticsDotNetHost>
+    <_DiagnosticsProfileArguments Condition="'$(DiagnosticsDeepProfile)' == 'true'">--deep</_DiagnosticsProfileArguments>
+    <_DiagnosticsSigningArguments Condition="'$(DiagnosticsAllowSignedRewrite)' == 'true'">--allow-signed</_DiagnosticsSigningArguments>
+    <_DiagnosticsKeyArguments Condition="'$(DiagnosticsSigningKey)' != ''">--key &quot;$(DiagnosticsSigningKey)&quot;</_DiagnosticsKeyArguments>
+  </PropertyGroup>
+  <Target Name="ValidateDiagnosticsConfiguration" Condition="'$(DiagnosticsEnabled)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+    <Error Condition="'$(PublishAot)' == 'true' or '$(PublishReadyToRun)' == 'true' or '$(PublishTrimmed)' == 'true' or '$(PublishSingleFile)' == 'true'"
+      Text="Diagnostics instrumentation currently supports untrimmed managed folder outputs only. Disable AOT, ReadyToRun, trimming and single-file publishing for this diagnostic build. Production artifacts must be built separately with DiagnosticsEnabled=false." />
+    <Error Condition="'$(RuntimeIdentifier)' == 'browser-wasm'" Text="Target instrumentation is currently a managed desktop capability; the browser workbench analyzes remote or imported captures." />
+    <Error Condition="!Exists('$(DiagnosticsWeaverPath)')" Text="Diagnostics weaver tool not found: $(DiagnosticsWeaverPath). Restore DiagnosticsVisualizer.Build or set DiagnosticsWeaverPath for repository builds." />
+    <Warning Condition="'$(Configuration)' == 'Release'" Text="Creating an explicitly instrumented Release output. Do not distribute these diagnostic binaries as production artifacts." />
+  </Target>
+  <Target Name="InstrumentDiagnosticsBuild" AfterTargets="Build" DependsOnTargets="ValidateDiagnosticsConfiguration"
+          Condition="'$(DiagnosticsEnabled)' == 'true' and '$(DesignTimeBuild)' != 'true' and ('$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe')">
+    <Exec Command="&quot;$(DiagnosticsDotNetHost)&quot; &quot;$(DiagnosticsWeaverPath)&quot; weave --directory &quot;$(TargetDir.TrimEnd('/','\'))&quot; --entry &quot;$(TargetFileName)&quot; --include &quot;$(DiagnosticsIncludeAssemblies)&quot; $(_DiagnosticsProfileArguments) $(_DiagnosticsSigningArguments) $(_DiagnosticsKeyArguments)" />
+  </Target>
+  <Target Name="InstrumentDiagnosticsPublish" AfterTargets="Publish" DependsOnTargets="ValidateDiagnosticsConfiguration"
+          Condition="'$(DiagnosticsEnabled)' == 'true' and '$(DesignTimeBuild)' != 'true' and ('$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe')">
+    <Exec Command="&quot;$(DiagnosticsDotNetHost)&quot; &quot;$(DiagnosticsWeaverPath)&quot; weave --directory &quot;$(PublishDir.TrimEnd('/','\'))&quot; --entry &quot;$(TargetFileName)&quot; --include &quot;$(DiagnosticsIncludeAssemblies)&quot; $(_DiagnosticsProfileArguments) $(_DiagnosticsSigningArguments) $(_DiagnosticsKeyArguments)" />
+  </Target>
+  <Target Name="RestoreDiagnosticsOutput" Condition="Exists('$(DiagnosticsWeaverPath)') and Exists('$(TargetDir)avtrace.manifest.json')">
+    <Exec Command="&quot;$(DiagnosticsDotNetHost)&quot; &quot;$(DiagnosticsWeaverPath)&quot; restore --directory &quot;$(TargetDir.TrimEnd('/','\'))&quot;" />
+  </Target>
+</Project>
