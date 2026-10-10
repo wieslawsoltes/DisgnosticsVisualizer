@@ -16,10 +16,9 @@ public sealed class CaptureSession : IDisposable
     private readonly ConcurrentQueue<CaptureWriter> _writers = new();
     private readonly ThreadLocal<CaptureWriter?> _local;
     private readonly ConditionalWeakTable<object, Identity>.CreateValueCallback _createIdentity;
-    private readonly object _drainGate = new();
+    private readonly object _drainGate = new(), _symbolGate = new();
     private long _nextObject, _blockSequence, _drops, _faults, _metadataDrops;
-    private int _nextSymbol, _nextWriter, _enabled = 1, _disposed;
-    private int _drainStart;
+    private int _nextSymbol, _nextWriter, _enabled = 1, _disposed, _drainStart;
     private SnapshotData? _snapshot;
     public Guid Id { get; } = Guid.NewGuid();
     public long OriginTimestamp { get; } = Stopwatch.GetTimestamp();
@@ -29,11 +28,9 @@ public sealed class CaptureSession : IDisposable
     public long DroppedEvents => Interlocked.Read(ref _drops);
     public long ProbeFaults => Interlocked.Read(ref _faults);
     public long MetadataDrops => Interlocked.Read(ref _metadataDrops);
-
     public CaptureSession(CaptureOptions? options = null)
     {
-        Options = options ?? new(); Options.Validate();
-        _createIdentity = CreateIdentity;
+        Options = options ?? new(); Options.Validate(); _createIdentity = CreateIdentity;
         _local = new ThreadLocal<CaptureWriter?>(() =>
         {
             var ordinal = Interlocked.Increment(ref _nextWriter);
@@ -49,37 +46,33 @@ public sealed class CaptureSession : IDisposable
     internal CaptureWriter? Writer => _local.Value;
     internal void Drop() => Interlocked.Increment(ref _drops);
     internal void Fault() => Interlocked.Increment(ref _faults);
-    public long GetObjectId(object? value)
-    {
-        if (value is null) return 0;
-        return _identities.GetValue(value, _createIdentity).Id;
-    }
+    public long GetObjectId(object? value) => value is null ? 0 : _identities.GetValue(value, _createIdentity).Id;
     private Identity CreateIdentity(object value)
     {
         var id = Interlocked.Increment(ref _nextObject);
         if (id > Options.MaxObjects) { Interlocked.Increment(ref _metadataDrops); return new(0); }
-        var type = value.GetType();
-        _objects[id] = new(id, type.FullName ?? type.Name, $"{type.Name} #{id}");
-        _references[id] = new(value);
-        return new(id);
+        var type = value.GetType(); _objects[id] = new(id, type.FullName ?? type.Name, $"{type.Name} #{id}");
+        _references[id] = new(value); return new(id);
     }
     public object? ResolveObject(long id) => _references.TryGetValue(id, out var weak) && weak.TryGetTarget(out var value) ? value : null;
     internal int Intern(CaptureWriter writer, string name)
     {
         if (writer.Symbols.TryGetValue(name, out var id)) return id;
-        id = _symbolIds.GetOrAdd(name, key =>
+        if (!_symbolIds.TryGetValue(name, out id))
         {
-            var n = Interlocked.Increment(ref _nextSymbol);
-            if (n > Options.MaxSymbols) { Interlocked.Increment(ref _metadataDrops); return 0; }
-            _symbols[n] = key; return n;
-        });
-        // Bound per-thread caches as well as the global catalogue.
+            lock (_symbolGate)
+            {
+                if (!_symbolIds.TryGetValue(name, out id))
+                {
+                    if (_nextSymbol >= Options.MaxSymbols) { Interlocked.Increment(ref _metadataDrops); return 0; }
+                    id = ++_nextSymbol; _symbols[id] = name; _symbolIds[name] = id;
+                }
+            }
+        }
         if (writer.Symbols.Count < Math.Min(Options.MaxSymbols, 8192)) writer.Symbols[name] = id;
         return id;
     }
     public void SetSnapshot(SnapshotData snapshot) => Interlocked.Exchange(ref _snapshot, snapshot);
-
-    /// <summary>Call from a collector thread. Recording threads never acquire this lock.</summary>
     public TraceBlock Drain(int maxEvents = 4096)
     {
         if (maxEvents is < 1 or > TraceLimits.MaxEventsPerBlock) throw new ArgumentOutOfRangeException(nameof(maxEvents));

@@ -6,6 +6,7 @@
     <Project Path="src/DiagnosticsVisualizer.Analysis/DiagnosticsVisualizer.Analysis.csproj" />
     <Project Path="src/DiagnosticsVisualizer.Weaver/DiagnosticsVisualizer.Weaver.csproj" />
     <Project Path="src/DiagnosticsVisualizer.Transport/DiagnosticsVisualizer.Transport.csproj" />
+    <Project Path="src/DiagnosticsVisualizer.Agent.Avalonia/DiagnosticsVisualizer.Agent.Avalonia.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/DiagnosticsVisualizer.Tests/DiagnosticsVisualizer.Tests.csproj" />

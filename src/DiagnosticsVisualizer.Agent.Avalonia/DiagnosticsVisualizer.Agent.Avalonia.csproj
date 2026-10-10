@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="$(AvaloniaVersion)" />
+    <ProjectReference Include="../DiagnosticsVisualizer.Runtime/DiagnosticsVisualizer.Runtime.csproj" />
+    <ProjectReference Include="../DiagnosticsVisualizer.Transport/DiagnosticsVisualizer.Transport.csproj" />
+  </ItemGroup>
+</Project>
