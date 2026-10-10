@@ -119,7 +119,10 @@ public sealed class CausalityGraph : Control
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e); if (_drag is not { } start) return;
-        var delta = e.GetPosition(this) - start; _moved |= delta.Length > 3; _offset = _startOffset + delta; InvalidateVisual();
+        var position = e.GetPosition(this);
+        var delta = new Vector(position.X - start.X, position.Y - start.Y);
+        _moved |= delta.X * delta.X + delta.Y * delta.Y > 9;
+        _offset = _startOffset + delta; InvalidateVisual();
     }
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
