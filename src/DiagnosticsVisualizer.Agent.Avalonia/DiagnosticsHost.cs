@@ -18,6 +18,7 @@ public sealed class DiagnosticsHost : IAsyncDisposable
     private readonly object _subscribersGate = new();
     private readonly List<LocalCaptureSubscription> _subscribers = [];
     private readonly FrameQueue _networkFrames = new(64, 8 * 1024 * 1024);
+    private readonly TraceStreamEncoder _archiveEncoder = new();
     private readonly FileStream? _archive;
     private readonly UdpTelemetrySender? _udp;
     private readonly Task _pump, _network;
@@ -155,7 +156,7 @@ public sealed class DiagnosticsHost : IAsyncDisposable
         var frame = TraceCodec.Encode(block); Interlocked.Increment(ref _blocks);
         lock (_subscribersGate)
             for (var i = _subscribers.Count - 1; i >= 0; i--) if (!_subscribers[i].Publish(block)) _subscribers.RemoveAt(i);
-        if (_archive is not null) await _archive.WriteAsync(frame, cancellationToken).ConfigureAwait(false);
+        if (_archive is not null) await _archive.WriteAsync(block.Snapshot is null ? frame : _archiveEncoder.Encode(block), cancellationToken).ConfigureAwait(false);
         if (_options.Endpoint is not null && !_networkFrames.TryWrite(frame, reliable: block.Snapshot is not null))
             Interlocked.Increment(ref _networkDrops);
     }
@@ -189,6 +190,7 @@ public sealed class DiagnosticsHost : IAsyncDisposable
     }
     private async Task SendFramesAsync(IFrameConnection connection, CancellationToken cancellationToken)
     {
+        var encoder = new TraceStreamEncoder(); // Lifetime is exactly one reliable connection.
         await foreach (var packet in _networkFrames.ReadPacketsAsync(cancellationToken).ConfigureAwait(false))
         {
             try
@@ -199,7 +201,9 @@ public sealed class DiagnosticsHost : IAsyncDisposable
                     try { await _udp.SendAsync(packet.Bytes, cancellationToken).ConfigureAwait(false); continue; }
                     catch (SocketException) { /* Local send failure: reliable fallback; a partial UDP copy may already be in flight. */ }
                 }
-                await connection.SendAsync(packet.Bytes, cancellationToken).ConfigureAwait(false);
+                var frame = packet.Reliable && connection.Features.HasFlag(ProtocolFeatures.SnapshotDeltas)
+                    ? encoder.Encode(TraceCodec.Decode(packet.Bytes)) : packet.Bytes;
+                await connection.SendAsync(frame, cancellationToken).ConfigureAwait(false);
             }
             catch { Interlocked.Increment(ref _networkDrops); throw; }
         }

@@ -14,12 +14,20 @@ public sealed record AgentOptions
     public IPEndPoint? UdpEndpoint { get; init; }
     public string? Token { get; init; }
     public TimeSpan FlushInterval { get; init; } = TimeSpan.FromMilliseconds(25);
-    public TimeSpan SnapshotInterval { get; init; } = TimeSpan.FromSeconds(2);
+    public TimeSpan SnapshotInterval { get; init; } = ReadSnapshotInterval();
     public TimeSpan SnapshotSliceBudget { get; init; } = TimeSpan.FromMilliseconds(2);
     public int MaxObservedObjects { get; init; } = 20_000;
     public bool RevealPrimitiveValues { get; init; }
     public bool RevealTextValues { get; init; }
     public bool ObserveNotifications { get; init; } = true;
+    private static TimeSpan ReadSnapshotInterval()
+    {
+        var text = Environment.GetEnvironmentVariable("AVTRACE_SNAPSHOT_INTERVAL_MS");
+        if (text is null) return TimeSpan.FromSeconds(2);
+        if (!int.TryParse(text, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var ms) || ms is < 100 or > 60000)
+            throw new ArgumentException("AVTRACE_SNAPSHOT_INTERVAL_MS must be an integer from 100 to 60000.");
+        return TimeSpan.FromMilliseconds(ms);
+    }
     internal void Validate()
     {
         if (FlushInterval < TimeSpan.FromMilliseconds(5) || FlushInterval > TimeSpan.FromSeconds(5) ||

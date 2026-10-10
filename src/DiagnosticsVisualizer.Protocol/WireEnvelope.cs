@@ -5,61 +5,59 @@ namespace DiagnosticsVisualizer.Protocol;
 
 public enum FrameKind : byte { Trace = 1, Command = 2, SnapshotDelta = 3 }
 
+/// <summary>Little-endian 12-byte header, bounded payload, CRC32 trailer.</summary>
 public static class WireEnvelope
 {
-    public const uint Magic = 0x52545641; // AVTR
-    public const int HeaderBytes = 20;
+    public const uint Magic = 0x31545644; // DVT1
+    public const int HeaderBytes = 12;
     internal static byte[] Seal(FrameKind kind, ReadOnlySpan<byte> payload)
     {
         var length = checked(HeaderBytes + payload.Length + 4);
         if (length > TraceLimits.MaxFrameBytes) throw new InvalidDataException("Frame too large.");
-        var result = new byte[length]; var s = result.AsSpan();
-        BinaryPrimitives.WriteUInt32LittleEndian(s, Magic); s[4] = 1; s[5] = (byte)kind;
-        BinaryPrimitives.WriteUInt16LittleEndian(s[6..], HeaderBytes);
-        BinaryPrimitives.WriteInt32LittleEndian(s[8..], length);
-        BinaryPrimitives.WriteInt32LittleEndian(s[12..], payload.Length);
-        payload.CopyTo(s[HeaderBytes..]);
-        BinaryPrimitives.WriteUInt32LittleEndian(s[^4..], Crc32.Compute(s[..^4]));
-        return result;
+        var bytes = new byte[length];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, Magic);
+        bytes[4] = 1; bytes[5] = (byte)kind;
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(8), length);
+        payload.CopyTo(bytes.AsSpan(HeaderBytes));
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(length - 4), Crc32.Compute(bytes.AsSpan(0, length - 4)));
+        return bytes;
     }
-    public static int ReadLength(ReadOnlySpan<byte> header)
+    public static FrameKind GetKind(ReadOnlySpan<byte> frame)
     {
-        if (header.Length < HeaderBytes || BinaryPrimitives.ReadUInt32LittleEndian(header) != Magic || header[4] != 1 ||
-            header[5] is < 1 or > 3 || BinaryPrimitives.ReadUInt16LittleEndian(header[6..]) != HeaderBytes || BinaryPrimitives.ReadUInt32LittleEndian(header[16..]) != 0)
-            throw new InvalidDataException("Unsupported trace envelope.");
-        var length = BinaryPrimitives.ReadInt32LittleEndian(header[8..]);
-        if (length < HeaderBytes + 4 || length > TraceLimits.MaxFrameBytes) throw new InvalidDataException("Invalid frame length.");
-        return length;
+        Validate(frame); return (FrameKind)frame[5];
     }
-    public static FrameKind GetKind(ReadOnlySpan<byte> frame) { Validate(frame); return (FrameKind)frame[5]; }
-    internal static ReadOnlySpan<byte> Open(ReadOnlySpan<byte> frame, FrameKind expected)
+    internal static ReadOnlySpan<byte> Open(ReadOnlySpan<byte> frame, FrameKind kind)
     {
         Validate(frame);
-        if ((FrameKind)frame[5] != expected) throw new InvalidDataException("Unexpected frame kind.");
-        return frame.Slice(HeaderBytes, frame.Length - HeaderBytes - 4);
+        if (frame[5] != (byte)kind) throw new InvalidDataException("Unexpected frame kind.");
+        return frame[HeaderBytes..^4];
+    }
+    public static int GetFrameLength(ReadOnlySpan<byte> header)
+    {
+        if (header.Length < HeaderBytes || BinaryPrimitives.ReadUInt32LittleEndian(header) != Magic ||
+            header[4] != 1 || header[6] != 0 || header[7] != 0 || header[5] is < 1 or > 3)
+            throw new InvalidDataException("Unsupported trace header/version.");
+        var length = BinaryPrimitives.ReadInt32LittleEndian(header[8..]);
+        if (length < HeaderBytes + 4 || length > TraceLimits.MaxFrameBytes)
+            throw new InvalidDataException("Invalid frame length.");
+        return length;
     }
     public static void Validate(ReadOnlySpan<byte> frame)
     {
-        var length = ReadLength(frame);
-        if (frame.Length != length || BinaryPrimitives.ReadInt32LittleEndian(frame[12..]) != length - HeaderBytes - 4 ||
-            BinaryPrimitives.ReadUInt32LittleEndian(frame[^4..]) != Crc32.Compute(frame[..^4]))
-            throw new InvalidDataException("Truncated, corrupt, or concatenated frame.");
+        var length = GetFrameLength(frame);
+        if (frame.Length != length) throw new InvalidDataException("Truncated or oversized frame.");
+        if (BinaryPrimitives.ReadUInt32LittleEndian(frame[^4..]) != Crc32.Compute(frame[..^4]))
+            throw new InvalidDataException("Trace checksum mismatch.");
     }
-}
-
-public static class Crc32
-{
-    private static readonly uint[] Table = BuildTable();
-    private static uint[] BuildTable()
+    public static async ValueTask<byte[]?> ReadAsync(Stream stream, CancellationToken cancellationToken = default)
     {
-        var table = new uint[256];
-        for (uint i = 0; i < table.Length; i++) { var c = i; for (var b = 0; b < 8; b++) c = (c & 1) != 0 ? 0xEDB88320U ^ (c >> 1) : c >> 1; table[i] = c; }
-        return table;
-    }
-    public static uint Compute(ReadOnlySpan<byte> data)
-    {
-        var crc = uint.MaxValue;
-        foreach (var b in data) crc = Table[(crc ^ b) & 255] ^ (crc >> 8);
-        return ~crc;
+        var header = new byte[HeaderBytes];
+        var first = await stream.ReadAsync(header.AsMemory(0, 1), cancellationToken).ConfigureAwait(false);
+        if (first == 0) return null;
+        await stream.ReadExactlyAsync(header.AsMemory(1), cancellationToken).ConfigureAwait(false);
+        var length = GetFrameLength(header);
+        var frame = new byte[length]; header.CopyTo(frame, 0);
+        await stream.ReadExactlyAsync(frame.AsMemory(HeaderBytes), cancellationToken).ConfigureAwait(false);
+        Validate(frame); return frame;
     }
 }
