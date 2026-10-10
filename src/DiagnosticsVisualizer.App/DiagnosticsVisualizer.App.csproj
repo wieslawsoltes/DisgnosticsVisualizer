@@ -1,1 +1,7 @@
-<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><IsPackable>false</IsPackable></PropertyGroup><ItemGroup><ProjectReference Include="../DiagnosticsVisualizer.Workbench/DiagnosticsVisualizer.Workbench.csproj" /></ItemGroup></Project>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><IsPackable>false</IsPackable></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="$(AvaloniaVersion)" />
+    <ProjectReference Include="../DiagnosticsVisualizer.Workbench/DiagnosticsVisualizer.Workbench.csproj" />
+  </ItemGroup>
+</Project>

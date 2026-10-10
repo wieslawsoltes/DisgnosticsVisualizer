@@ -6,7 +6,7 @@ namespace DiagnosticsVisualizer.Weaver;
 /// <summary>Version-adaptive named hooks. The output manifest records actual matches, not assumed coverage.</summary>
 public static class HookCatalog
 {
-    public const string Version = "1";
+    public const string Version = "2";
     public static Subsystem? Match(MethodDefinition method, bool deep)
     {
         var attribute = method.CustomAttributes.Concat(method.DeclaringType.CustomAttributes)
@@ -16,6 +16,10 @@ public static class HookCatalog
         var t = method.DeclaringType.FullName; var n = method.Name;
         if (n.Contains("XamlIlPopulate", StringComparison.Ordinal) || n.Contains("XamlIlBuild", StringComparison.Ordinal) ||
             n.Contains("XamlIlTrampoline", StringComparison.Ordinal)) return Subsystem.Xaml;
+        // Application controls need the same deep layout coverage as built-in controls.
+        // Resolve the base chain rather than instrumenting unrelated methods with similar names.
+        if (deep && method.IsVirtual && n is "MeasureOverride" or "ArrangeOverride" && DerivesFromLayoutable(method.DeclaringType))
+            return Subsystem.Layout;
         if (!t.StartsWith("Avalonia.", StringComparison.Ordinal))
         {
             if (n is "OnPropertyChanged" or "RaisePropertyChanged" or "RaiseAndSetIfChanged") return Subsystem.PropertyNotifications;
@@ -49,7 +53,17 @@ public static class HookCatalog
         if (t.Contains("Composition", StringComparison.Ordinal) && n is "Commit" or "CommitCore" or "Render" or "SerializeChanges" or "DeserializeChanges" or "ProcessBatch" or "Update") return Subsystem.Compositor;
         if ((t.Contains("Rendering", StringComparison.Ordinal) || t.Contains("Skia", StringComparison.Ordinal)) &&
             n is "Render" or "Update" or "UpdateCore" or "Paint" or "Draw" or "RenderCore" or "Invalidate" or "AddDirty" or "CreateDrawingContext") return Subsystem.Rendering;
-        if (deep && n is "MeasureOverride" or "ArrangeOverride") return Subsystem.Layout;
         return null;
+    }
+    private static bool DerivesFromLayoutable(TypeDefinition type)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (TypeReference? current = type; current is not null && seen.Add(current.FullName);)
+        {
+            if (current.FullName == "Avalonia.Layout.Layoutable") return true;
+            try { current = current.Resolve()?.BaseType; }
+            catch (AssemblyResolutionException) { return false; }
+        }
+        return false;
     }
 }

@@ -6,11 +6,12 @@ using DiagnosticsVisualizer.Core;
 
 namespace DiagnosticsVisualizer.Runtime;
 
-/// <summary>Small, fail-contained injection ABI. No formatting, I/O, or UI access on the hot path.</summary>
+/// <summary>Fail-contained injection ABI. No I/O or UI access on a producer thread.</summary>
 public static class Probe
 {
     private static CaptureSession? _current;
     [ThreadStatic] private static bool _insideProbe;
+    [ThreadStatic] private static int _suppressionDepth;
     public static CaptureSession? Current => Volatile.Read(ref _current);
     public static CaptureSession Start(CaptureOptions? options = null)
     {
@@ -21,12 +22,21 @@ public static class Probe
     }
     internal static void Detach(CaptureSession session) => Interlocked.CompareExchange(ref _current, null, session);
 
+    /// <summary>Exclude synchronous diagnostic work itself. Never hold this lease across an await.</summary>
+    public static ProbeSuppression Suppress() => new(++_suppressionDepth, Environment.CurrentManagedThreadId);
+    internal static void EndSuppression(int depth, int thread)
+    {
+        if (Environment.CurrentManagedThreadId != thread || _suppressionDepth != depth)
+        { Current?.Fault(); return; }
+        _suppressionDepth--;
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static TraceScope Enter(int subsystem, string site, object? target, object? related = null)
     {
         var session = Volatile.Read(ref _current);
-        if (session is null || !session.Recording || _insideProbe || (uint)subsystem > (uint)Subsystem.Diagnostics ||
-            (session.Options.SubsystemMask & (1UL << subsystem)) == 0) return default;
+        if (session is null || !session.Recording || _insideProbe || _suppressionDepth != 0 ||
+            (uint)subsystem > (uint)Subsystem.Diagnostics || (session.Options.SubsystemMask & (1UL << subsystem)) == 0) return default;
         return EnterSlow(session, (Subsystem)subsystem, site, target, related);
     }
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -52,11 +62,12 @@ public static class Probe
         _insideProbe = true;
         try
         {
-            if (writer.ThreadId != Environment.CurrentManagedThreadId) { session.Fault(); return; }
+            // Copied, doubly-disposed or out-of-order scopes must not corrupt the caller's parent stack.
+            if (writer.ThreadId != Environment.CurrentManagedThreadId || writer.Parent != id)
+            { session.Fault(); return; }
             writer.Parent = parent;
             var e = new TraceEvent(id, parent, start, Math.Max(0, Stopwatch.GetTimestamp() - start),
                 obj, related, writer.ThreadId, name, subsystem);
-            // Closing spans are retained while paused; Dispose ends the session and detaches it.
             if (!ReferenceEquals(Current, session) || !writer.TryWrite(e)) session.Drop();
         }
         catch { session.Fault(); }
@@ -66,7 +77,8 @@ public static class Probe
         object? related = null, long data0 = 0, long data1 = 0, TraceEventKind kind = TraceEventKind.Instant)
     {
         var session = Current;
-        if (session is null || !session.Recording || _insideProbe ||
+        if (session is null || !session.Recording || _insideProbe || _suppressionDepth != 0 ||
+            (uint)subsystem > (uint)Subsystem.Diagnostics || (uint)kind > (uint)TraceEventKind.Link ||
             (session.Options.SubsystemMask & (1UL << (int)subsystem)) == 0) return;
         _insideProbe = true;
         try
@@ -81,18 +93,36 @@ public static class Probe
         catch { session.Fault(); }
         finally { _insideProbe = false; }
     }
-    // These methods are inserted immediately before actual delegate invocation sites.
-    public static void PropertyNotification(object? sender, PropertyChangedEventArgs args)
+    // Injected immediately before delegate invocation. Null event arguments are legal IL;
+    // observing them must not introduce a new exception into the application.
+    public static void PropertyNotification(object? sender, PropertyChangedEventArgs? args)
     {
         if (Current?.Recording != true) return;
-        Instant(Subsystem.PropertyNotifications, args.PropertyName ?? "*", sender);
+        Instant(Subsystem.PropertyNotifications, args?.PropertyName ?? "*", sender);
     }
-    public static void CollectionNotification(object? sender, NotifyCollectionChangedEventArgs args)
+    public static void CollectionNotification(object? sender, NotifyCollectionChangedEventArgs? args)
     {
         if (Current?.Recording != true) return;
-        Instant(Subsystem.CollectionNotifications, args.Action.ToString(), sender, null,
-            args.NewStartingIndex, args.OldStartingIndex);
+        var name = args?.Action switch
+        {
+            NotifyCollectionChangedAction.Add => "Add",
+            NotifyCollectionChangedAction.Remove => "Remove",
+            NotifyCollectionChangedAction.Replace => "Replace",
+            NotifyCollectionChangedAction.Move => "Move",
+            NotifyCollectionChangedAction.Reset => "Reset",
+            _ => "Unknown"
+        };
+        Instant(Subsystem.CollectionNotifications, name, sender, null,
+            args?.NewStartingIndex ?? -1, args?.OldStartingIndex ?? -1);
     }
+}
+
+/// <summary>A thread-affine, nestable suppression lease; misuse is reported, not thrown into target code.</summary>
+public readonly ref struct ProbeSuppression
+{
+    private readonly int _depth, _thread;
+    internal ProbeSuppression(int depth, int thread) { _depth = depth; _thread = thread; }
+    public void Dispose() { if (_depth != 0) Probe.EndSuppression(_depth, _thread); }
 }
 
 /// <summary>Synchronous scope: ref-like to prevent accidentally retaining it across await.</summary>

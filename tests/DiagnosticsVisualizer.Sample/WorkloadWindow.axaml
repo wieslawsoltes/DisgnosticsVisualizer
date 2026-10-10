@@ -1,0 +1,25 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="using:DiagnosticsVisualizer.Sample"
+        x:Class="DiagnosticsVisualizer.Sample.WorkloadWindow"
+        Width="720" Height="520" Title="Instrumentation integration">
+  <Window.Resources>
+    <SolidColorBrush x:Key="SurfaceBrush">#264653</SolidColorBrush>
+  </Window.Resources>
+  <Window.Styles>
+    <Style Selector="Button.accent">
+      <Setter Property="Padding" Value="12,8" />
+      <Setter Property="Opacity" Value="0.9" />
+    </Style>
+  </Window.Styles>
+  <local:WorkloadPanel Name="Panel" Margin="16" Spacing="8">
+    <TextBlock Text="{Binding Title}" />
+    <Border Height="20" Background="{StaticResource SurfaceBrush}" />
+    <Button Name="ActionButton" Content="Generate activity" Background="{DynamicResource SurfaceBrush}" />
+    <ItemsControl ItemsSource="{Binding Items}">
+      <ItemsControl.ItemTemplate>
+        <DataTemplate><TextBlock Text="{Binding}" /></DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+  </local:WorkloadPanel>
+</Window>

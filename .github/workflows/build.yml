@@ -14,12 +14,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Archive exact source revision
+        run: |
+          mkdir -p artifacts/source
+          git archive --format=tar.gz HEAD > artifacts/source/source.tar.gz
+          git rev-parse HEAD > artifacts/source/commit.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-snapshot
+          path: artifacts/source
+          retention-days: 7
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
       - run: dotnet build DiagnosticsVisualizer.slnx -c Release
       - run: dotnet test tests/DiagnosticsVisualizer.Tests -c Release --no-build --logger "trx;LogFileName=tests.trx"
-      - run: dotnet pack src/DiagnosticsVisualizer.Runtime -c Release --no-build -o artifacts/packages
+      - name: Pack and validate every reusable library
+        run: bash eng/pack.sh
+      - name: Execute instrumented Avalonia locally and through the collector
+        run: bash eng/integration.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -27,3 +40,5 @@ jobs:
           path: |
             **/TestResults/*.trx
             artifacts/packages/*
+            artifacts/integration/*report.json
+            artifacts/integration/*.log

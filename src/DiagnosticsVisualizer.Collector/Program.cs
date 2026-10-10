@@ -43,7 +43,13 @@ try
         { context.Response.StatusCode = 403; return; }
         await next(context);
     });
-    app.MapGet("/health", (CaptureHub hub) => Results.Json(new { status = "ok", sourceConnected = hub.Connected, viewers = hub.Viewers }));
+    // Operational counters only: no token, object names, values, traces or paths are exposed by health.
+    app.MapGet("/health", (CaptureHub hub) => Results.Json(new
+    {
+        status = "ok", sourceConnected = hub.Connected, viewers = hub.Viewers,
+        frames = hub.Frames, udpFrames = hub.UdpFrames,
+        udpRejectedPackets = hub.UdpRejectedPackets, udpExpiredFrames = hub.UdpExpiredFrames
+    }));
     app.Map("/trace", async (HttpContext context, CaptureHub hub, ILoggerFactory loggerFactory) =>
     {
         if (!context.WebSockets.IsWebSocketRequest) { context.Response.StatusCode = 400; return; }

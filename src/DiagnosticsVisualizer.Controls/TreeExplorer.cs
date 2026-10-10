@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Templates;
 using Avalonia.Layout;
@@ -25,6 +26,8 @@ public sealed class TreeExplorer : UserControl
     private Dictionary<long, NodeSnapshot[]> _children = [];
     private bool _updating;
     private long _selected;
+    private static readonly Geometry ExpandedGeometry = Geometry.Parse("M 1,2 L 5,6 L 9,2");
+    private static readonly Geometry CollapsedGeometry = Geometry.Parse("M 3,0 L 7,4 L 3,8");
     public bool Logical { get; }
     public event Action<long>? ObjectSelected;
     public TreeExplorer(bool logical = false)
@@ -35,11 +38,20 @@ public sealed class TreeExplorer : UserControl
         {
             if (row is null) return new TextBlock();
             var layout = new Grid { ColumnDefinitions = new("18,*,Auto"), Margin = new(Math.Min(row.Depth, 40) * 13 + 4, 0, 7, 0), Height = 27 };
+            // Geometry avoids missing-glyph boxes and platform-specific font-dependent expanders.
+            var icon = new global::Avalonia.Controls.Shapes.Path
+            {
+                Data = row.Expanded ? ExpandedGeometry : CollapsedGeometry,
+                Stroke = ChartPalette.Muted, StrokeThickness = 1.3, Width = 10, Height = 8,
+                IsVisible = row.HasChildren
+            };
             var expander = new Button
             {
-                Content = row.HasChildren ? row.Expanded ? "▾" : "▸" : "·", Width = 18, Height = 24, Padding = new(0),
-                Background = Brushes.Transparent, BorderThickness = new(0), Focusable = false, FontSize = 12
+                Content = icon, Width = 18, Height = 24, Padding = new(0),
+                Background = Brushes.Transparent, BorderThickness = new(0), Focusable = false,
+                IsEnabled = row.HasChildren
             };
+            AutomationProperties.SetName(expander, $"{(row.Expanded ? "Collapse" : "Expand")} {row.Label}");
             expander.Click += (_, e) => { if (row.HasChildren) { if (!_expanded.Add(row.Id)) _expanded.Remove(row.Id); Rebuild(); } e.Handled = true; };
             var label = new TextBlock { Text = row.Label, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
                 Opacity = row.Node.Visible ? 1 : .45 };
@@ -59,10 +71,10 @@ public sealed class TreeExplorer : UserControl
     public void SetSnapshot(SnapshotData snapshot)
     {
         _nodes = snapshot.Nodes.GroupBy(node => node.Id).ToDictionary(group => group.Key, group => group.Last());
-        _children = _nodes.Values.GroupBy(node => Parent(node)).ToDictionary(group => group.Key, group => group.OrderBy(node => node.Id).ToArray());
+        _children = _nodes.Values.GroupBy(ParentId).ToDictionary(group => group.Key, group => group.OrderBy(node => node.Id).ToArray());
         if (_expanded.Count == 0)
         {
-            foreach (var node in _nodes.Values.Where(node => Parent(node) == 0 || !_nodes.ContainsKey(Parent(node))))
+            foreach (var node in _nodes.Values.Where(node => ParentId(node) == 0 || !_nodes.ContainsKey(ParentId(node))))
             { _expanded.Add(node.Id); foreach (var child in _children.GetValueOrDefault(node.Id) ?? []) _expanded.Add(child.Id); }
         }
         _expanded.IntersectWith(_nodes.Keys); Rebuild();
@@ -74,7 +86,7 @@ public sealed class TreeExplorer : UserControl
         if (reveal && _nodes.TryGetValue(id, out var node))
         {
             var seen = new HashSet<long>();
-            while (seen.Add(node.Id) && _nodes.TryGetValue(Parent(node), out var parent)) { _expanded.Add(parent.Id); node = parent; }
+            while (seen.Add(node.Id) && _nodes.TryGetValue(ParentId(node), out var parent)) { _expanded.Add(parent.Id); node = parent; }
             Rebuild();
         }
         _updating = true;
@@ -87,7 +99,7 @@ public sealed class TreeExplorer : UserControl
     }
     public void ExpandAll() { foreach (var id in _nodes.Keys) _expanded.Add(id); Rebuild(); }
     public void CollapseAll() { _expanded.Clear(); Rebuild(); }
-    private long Parent(NodeSnapshot node) => Logical ? node.LogicalParent : node.VisualParent;
+    private long ParentId(NodeSnapshot node) => Logical ? node.LogicalParent : node.VisualParent;
     private void Rebuild()
     {
         var filter = _search.Text?.Trim() ?? ""; var rows = new List<TreeRow>(); var seen = new HashSet<long>();
@@ -101,7 +113,7 @@ public sealed class TreeExplorer : UserControl
         else
         {
             var pending = new Stack<(NodeSnapshot Node, int Depth)>();
-            foreach (var node in _nodes.Values.Where(node => Parent(node) == 0 || !_nodes.ContainsKey(Parent(node))).OrderByDescending(node => node.Id)) pending.Push((node, 0));
+            foreach (var node in _nodes.Values.Where(node => ParentId(node) == 0 || !_nodes.ContainsKey(ParentId(node))).OrderByDescending(node => node.Id)) pending.Push((node, 0));
             while (pending.Count > 0)
             {
                 var (node, depth) = pending.Pop(); if (!seen.Add(node.Id)) continue;
@@ -110,8 +122,8 @@ public sealed class TreeExplorer : UserControl
                 if (!_expanded.Contains(node.Id) || depth > 256) continue;
                 for (var i = children.Length - 1; i >= 0; i--) pending.Push((children[i], depth + 1));
             }
-            // Corrupt/disconnected cycles are not silently hidden from the investigator.
-            foreach (var node in _nodes.Values.Where(node => !seen.Contains(node.Id) && Parent(node) == node.Id)) rows.Add(new(node, 0, false, false));
+            // Self-referencing nodes are displayed instead of being silently omitted.
+            foreach (var node in _nodes.Values.Where(node => !seen.Contains(node.Id) && ParentId(node) == node.Id)) rows.Add(new(node, 0, false, false));
         }
         _updating = true;
         try { _list.ItemsSource = rows; _list.SelectedItem = rows.FirstOrDefault(row => row.Id == _selected); }

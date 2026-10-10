@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
 using Avalonia;
 using DiagnosticsVisualizer.Core;
 using DiagnosticsVisualizer.Protocol;
@@ -7,7 +9,7 @@ using DiagnosticsVisualizer.Transport;
 
 namespace DiagnosticsVisualizer.Agent.Avalonia;
 
-/// <summary>Target-side collector. All file/network work runs outside the application's UI thread.</summary>
+/// <summary>Target-side collector. File/network work never executes on the application's UI producer thread.</summary>
 public sealed class DiagnosticsHost : IAsyncDisposable
 {
     private static DiagnosticsHost? _current;
@@ -17,16 +19,20 @@ public sealed class DiagnosticsHost : IAsyncDisposable
     private readonly List<LocalCaptureSubscription> _subscribers = [];
     private readonly FrameQueue _networkFrames = new(64, 8 * 1024 * 1024);
     private readonly FileStream? _archive;
+    private readonly UdpTelemetrySender? _udp;
     private readonly Task _pump, _network;
     private long _blocks, _networkDrops;
-    private int _disposed;
+    private int _disposed, _udpReady;
     private string _connection = "Local capture";
     private string? _lastError;
     public static DiagnosticsHost? Current => Volatile.Read(ref _current);
     public CaptureSession Session { get; }
     public AvaloniaInspector Inspector { get; }
     public AgentStatus Status => new(Session.Recording, Interlocked.Read(ref _blocks), Interlocked.Read(ref _networkDrops),
-        Volatile.Read(ref _connection), Volatile.Read(ref _lastError));
+        Volatile.Read(ref _connection), Volatile.Read(ref _lastError),
+        OperatingSystem.IsBrowser() ? 0 : _udp?.SentFrames ?? 0,
+        OperatingSystem.IsBrowser() ? 0 : _udp?.SentDatagrams ?? 0,
+        OperatingSystem.IsBrowser() ? 0 : _udp?.Failures ?? 0);
     private DiagnosticsHost(AgentOptions options)
     {
         options.Validate(); _options = options;
@@ -38,7 +44,13 @@ public sealed class DiagnosticsHost : IAsyncDisposable
         }
         try { Session = Probe.Start(options.Capture); }
         catch { _archive?.Dispose(); throw; }
-        Inspector = new(Session, options); Inspector.InspectionError += OnInspectionError;
+        try
+        {
+            if (options.UdpEndpoint is not null && !OperatingSystem.IsBrowser())
+                _udp = new(Session.Id, options.UdpEndpoint, options.Token!);
+            Inspector = new(Session, options); Inspector.InspectionError += OnInspectionError;
+        }
+        catch { Session.Dispose(); _archive?.Dispose(); throw; }
         _pump = Task.Run(PumpAsync);
         _network = options.Endpoint is null ? Task.CompletedTask : Task.Run(NetworkLoopAsync);
     }
@@ -50,18 +62,20 @@ public sealed class DiagnosticsHost : IAsyncDisposable
         { _ = host.DisposeAsync(); throw new InvalidOperationException("A diagnostics host is already running."); }
         return host;
     }
-    /// <summary>Called by the weaver's generated module initializer. Inert unless explicitly enabled.</summary>
+    /// <summary>Called by the generated module initializer. Inert unless explicitly enabled.</summary>
     public static void InitializeFromEnvironment()
     {
         if (Environment.GetEnvironmentVariable("AVTRACE_ENABLED") != "1" || Current is not null) return;
         try
         {
             var endpoint = Environment.GetEnvironmentVariable("AVTRACE_ENDPOINT");
+            var udp = Environment.GetEnvironmentVariable("AVTRACE_UDP_ENDPOINT");
             var path = Environment.GetEnvironmentVariable("AVTRACE_FILE");
             var host = Start(new()
             {
                 TracePath = string.IsNullOrWhiteSpace(path) ? null : path,
                 Endpoint = string.IsNullOrWhiteSpace(endpoint) ? null : new Uri(endpoint),
+                UdpEndpoint = string.IsNullOrWhiteSpace(udp) ? null : IPEndPoint.Parse(udp),
                 Token = Environment.GetEnvironmentVariable("AVTRACE_TOKEN"),
                 RevealPrimitiveValues = Environment.GetEnvironmentVariable("AVTRACE_REVEAL_PRIMITIVES") == "1",
                 RevealTextValues = Environment.GetEnvironmentVariable("AVTRACE_REVEAL_TEXT") == "1"
@@ -73,7 +87,6 @@ public sealed class DiagnosticsHost : IAsyncDisposable
         }
         catch (Exception error)
         {
-            // Never include environment values, tokens, target data, or exception messages in bootstrap logs.
             Trace.WriteLine($"Diagnostics Visualizer bootstrap unavailable: {error.GetType().Name}");
         }
     }
@@ -121,7 +134,6 @@ public sealed class DiagnosticsHost : IAsyncDisposable
         catch (Exception error) { Volatile.Write(ref _lastError, $"Capture pump stopped: {error.GetType().Name}"); }
         finally
         {
-            // Closing a trace drains the bounded remainder. Crash recovery accepts only a truncated final frame.
             using var drainTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(1));
             try
             {
@@ -144,7 +156,8 @@ public sealed class DiagnosticsHost : IAsyncDisposable
         lock (_subscribersGate)
             for (var i = _subscribers.Count - 1; i >= 0; i--) if (!_subscribers[i].Publish(block)) _subscribers.RemoveAt(i);
         if (_archive is not null) await _archive.WriteAsync(frame, cancellationToken).ConfigureAwait(false);
-        if (_options.Endpoint is not null && !_networkFrames.TryWrite(frame)) Interlocked.Increment(ref _networkDrops);
+        if (_options.Endpoint is not null && !_networkFrames.TryWrite(frame, reliable: block.Snapshot is not null))
+            Interlocked.Increment(ref _networkDrops);
     }
     private async Task NetworkLoopAsync()
     {
@@ -153,11 +166,12 @@ public sealed class DiagnosticsHost : IAsyncDisposable
         {
             try
             {
-                Volatile.Write(ref _connection, "Connecting");
+                Volatile.Write(ref _udpReady, 0); Volatile.Write(ref _connection, "Connecting");
                 await using IFrameConnection connection = _options.Endpoint!.Scheme is "ws" or "wss"
                     ? await WebSocketFrameConnection.ConnectAsync(_options.Endpoint, _options.Token!, true, _stop.Token).ConfigureAwait(false)
                     : await StreamFrameConnection.ConnectAsync(_options.Endpoint, _options.Token!, true, _stop.Token).ConfigureAwait(false);
                 Volatile.Write(ref _connection, "Connected"); delay = TimeSpan.FromMilliseconds(250);
+                Inspector.RequestSnapshot();
                 using var linked = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
                 var receive = ReceiveCommandsAsync(connection, linked.Token);
                 var send = SendFramesAsync(connection, linked.Token);
@@ -175,15 +189,32 @@ public sealed class DiagnosticsHost : IAsyncDisposable
     }
     private async Task SendFramesAsync(IFrameConnection connection, CancellationToken cancellationToken)
     {
-        await foreach (var frame in _networkFrames.ReadAllAsync(cancellationToken).ConfigureAwait(false))
-            await connection.SendAsync(frame, cancellationToken).ConfigureAwait(false);
+        await foreach (var packet in _networkFrames.ReadPacketsAsync(cancellationToken).ConfigureAwait(false))
+        {
+            try
+            {
+                if (_udp is not null && !OperatingSystem.IsBrowser() && Volatile.Read(ref _udpReady) != 0 &&
+                    !packet.Reliable && packet.Bytes.Length <= DatagramLimits.MaxFrame)
+                {
+                    try { await _udp.SendAsync(packet.Bytes, cancellationToken).ConfigureAwait(false); continue; }
+                    catch (SocketException) { /* Local send failure: reliable fallback; a partial UDP copy may already be in flight. */ }
+                }
+                await connection.SendAsync(packet.Bytes, cancellationToken).ConfigureAwait(false);
+            }
+            catch { Interlocked.Increment(ref _networkDrops); throw; }
+        }
     }
     private async Task ReceiveCommandsAsync(IFrameConnection connection, CancellationToken cancellationToken)
     {
         while (await connection.ReceiveAsync(cancellationToken).ConfigureAwait(false) is { } frame)
         {
-            var command = CommandCodec.Decode(frame); var response = Execute(command);
-            await connection.SendAsync(CommandCodec.Encode(response), cancellationToken).ConfigureAwait(false);
+            var command = CommandCodec.Decode(frame);
+            if (command.Kind == CommandKind.Response)
+            {
+                if (DatagramNegotiation.IsReady(command, Session.Id)) Volatile.Write(ref _udpReady, 1);
+                continue;
+            }
+            await connection.SendAsync(CommandCodec.Encode(Execute(command)), cancellationToken).ConfigureAwait(false);
         }
     }
     public async ValueTask DisposeAsync()
@@ -193,6 +224,12 @@ public sealed class DiagnosticsHost : IAsyncDisposable
         Session.SetRecording(false); Inspector.InspectionError -= OnInspectionError; Inspector.Dispose();
         _stop.Cancel();
         try { await Task.WhenAll(_pump, _network).ConfigureAwait(false); }
-        finally { Session.Dispose(); if (_archive is not null) await _archive.DisposeAsync().ConfigureAwait(false); _stop.Dispose(); }
+        finally
+        {
+            Session.Dispose();
+            if (_udp is not null && !OperatingSystem.IsBrowser()) await _udp.DisposeAsync().ConfigureAwait(false);
+            if (_archive is not null) await _archive.DisposeAsync().ConfigureAwait(false);
+            _stop.Dispose();
+        }
     }
 }

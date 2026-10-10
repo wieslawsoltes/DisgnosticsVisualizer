@@ -1,0 +1,83 @@
+name: Publish NuGet packages
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact NuGet version (without v)
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: nuget-release
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          version="${INPUT_VERSION:-${GITHUB_REF_NAME#v}}"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]] || exit 2
+          git merge-base --is-ancestor HEAD origin/main
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+      - run: dotnet build DiagnosticsVisualizer.slnx -c Release
+      - run: dotnet test tests/DiagnosticsVisualizer.Tests -c Release --no-build
+      - run: bash eng/pack.sh "$VERSION"
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+      - run: bash eng/integration.sh "$VERSION"
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-packages
+          path: artifacts/packages
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-validation
+          path: |
+            artifacts/integration/*report.json
+            artifacts/integration/workload.log
+  publish:
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: nuget
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-packages
+          path: artifacts/packages
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Validate publisher configuration
+        env:
+          NUGET_USER: ${{ secrets.NUGET_USER || vars.NUGET_USER }}
+        run: test -n "$NUGET_USER" || { echo 'Set NUGET_USER to the NuGet profile name and register the release.yml trusted-publishing policy.'; exit 1; }
+      - name: Exchange GitHub OIDC identity for a short-lived NuGet credential
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ secrets.NUGET_USER || vars.NUGET_USER }}
+      - name: Publish all validated libraries and symbol packages
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+        run: dotnet nuget push 'artifacts/packages/*.nupkg' --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
