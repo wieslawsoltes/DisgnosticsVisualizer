@@ -1,9 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <PackageReference Include="Avalonia.Themes.Fluent" Version="$(AvaloniaVersion)" />
-    <PackageReference Include="Dock.Avalonia" Version="$(DockVersion)" />
-    <PackageReference Include="Dock.Avalonia.Themes.Fluent" Version="$(DockVersion)" />
-    <PackageReference Include="Dock.Model.Mvvm" Version="$(DockVersion)" />
+    <PackageReference Include="Dock.Avalonia.v11" Version="$(DockVersion)" />
+    <PackageReference Include="Dock.Avalonia.Themes.Fluent.v11" Version="$(DockVersion)" />
+    <PackageReference Include="Dock.Model.Mvvm" Version="$(DockModelVersion)" />
     <ProjectReference Include="../DiagnosticsVisualizer.Controls/DiagnosticsVisualizer.Controls.csproj" />
     <ProjectReference Include="../DiagnosticsVisualizer.Transport/DiagnosticsVisualizer.Transport.csproj" />
   </ItemGroup>
