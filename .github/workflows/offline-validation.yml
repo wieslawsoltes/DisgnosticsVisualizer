@@ -1,0 +1,45 @@
+name: Offline validation toolchain
+on:
+  push:
+    branches: [feat/rider-workbench]
+    paths: [.github/workflows/offline-validation.yml]
+permissions:
+  contents: read
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Restore the pinned solution and validation dependencies
+        run: |
+          dotnet restore DiagnosticsVisualizer.slnx
+          mkdir -p /tmp/validation-dependencies
+          printf '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup><ItemGroup><PackageReference Include="Avalonia.Headless.XUnit" Version="11.3.22" /><PackageReference Include="Microsoft.Diagnostics.NETCore.Client" Version="0.2.*" /><PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.*" /></ItemGroup></Project>' > /tmp/validation-dependencies/validation.csproj
+          dotnet restore /tmp/validation-dependencies/validation.csproj
+      - name: Archive only public SDK binaries and restored packages
+        run: |
+          mkdir -p artifacts/tooling/dotnet
+          sdk=$(dotnet --version)
+          cp -a /usr/share/dotnet/dotnet /usr/share/dotnet/host artifacts/tooling/dotnet/
+          mkdir -p artifacts/tooling/dotnet/{sdk,shared/Microsoft.NETCore.App,shared/Microsoft.AspNetCore.App,packs}
+          cp -a /usr/share/dotnet/sdk/"$sdk" artifacts/tooling/dotnet/sdk/
+          for family in Microsoft.NETCore.App Microsoft.AspNetCore.App; do
+            version=$(find "/usr/share/dotnet/shared/$family" -maxdepth 1 -type d -name '10.*' | sort -V | tail -1)
+            cp -a "$version" "artifacts/tooling/dotnet/shared/$family/"
+          done
+          for family in Microsoft.NETCore.App.Ref Microsoft.AspNetCore.App.Ref Microsoft.NETCore.App.Host.linux-x64 NETStandard.Library.Ref; do
+            cp -a "/usr/share/dotnet/packs/$family" artifacts/tooling/dotnet/packs/
+          done
+          tar -czf artifacts/dotnet-toolchain.tar.gz -C artifacts/tooling dotnet
+          tar -czf artifacts/nuget-packages.tar.gz -C "$HOME/.nuget" packages
+      - uses: actions/upload-artifact@v4
+        with:
+          name: validation-toolchain
+          path: |
+            artifacts/dotnet-toolchain.tar.gz
+            artifacts/nuget-packages.tar.gz
+          compression-level: 0
+          retention-days: 1
