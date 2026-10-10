@@ -21,7 +21,7 @@ jobs:
           dotnet restore /tmp/validation-dependencies/validation.csproj
       - name: Archive only public SDK binaries and restored packages
         run: |
-          mkdir -p artifacts/tooling/dotnet
+          mkdir -p artifacts/tooling/dotnet artifacts/feed
           sdk=$(dotnet --version)
           cp -a /usr/share/dotnet/dotnet /usr/share/dotnet/host artifacts/tooling/dotnet/
           mkdir -p artifacts/tooling/dotnet/{sdk,shared/Microsoft.NETCore.App,shared/Microsoft.AspNetCore.App,packs}
@@ -30,16 +30,27 @@ jobs:
             version=$(find "/usr/share/dotnet/shared/$family" -maxdepth 1 -type d -name '10.*' | sort -V | tail -1)
             cp -a "$version" "artifacts/tooling/dotnet/shared/$family/"
           done
-          for family in Microsoft.NETCore.App.Ref Microsoft.AspNetCore.App.Ref Microsoft.NETCore.App.Host.linux-x64 NETStandard.Library.Ref; do
-            cp -a "/usr/share/dotnet/packs/$family" artifacts/tooling/dotnet/packs/
+          for family in Microsoft.NETCore.App.Ref Microsoft.AspNetCore.App.Ref Microsoft.NETCore.App.Host.linux-x64; do
+            mkdir -p "artifacts/tooling/dotnet/packs/$family"
+            for major in 8 10; do
+              version=$(find "/usr/share/dotnet/packs/$family" -maxdepth 1 -type d -name "$major.*" | sort -V | tail -1)
+              test -z "$version" || cp -a "$version" "artifacts/tooling/dotnet/packs/$family/"
+            done
           done
+          cp -a /usr/share/dotnet/packs/NETStandard.Library.Ref artifacts/tooling/dotnet/packs/
+          find "$HOME/.nuget/packages" -name '*.nupkg' -exec cp {} artifacts/feed/ \;
           tar -czf artifacts/dotnet-toolchain.tar.gz -C artifacts/tooling dotnet
-          tar -czf artifacts/nuget-packages.tar.gz -C "$HOME/.nuget" packages
+          tar -czf artifacts/nuget-feed.tar.gz -C artifacts feed
+          ls -lh artifacts/*.tar.gz
       - uses: actions/upload-artifact@v4
         with:
-          name: validation-toolchain
-          path: |
-            artifacts/dotnet-toolchain.tar.gz
-            artifacts/nuget-packages.tar.gz
+          name: validation-sdk
+          path: artifacts/dotnet-toolchain.tar.gz
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: validation-feed
+          path: artifacts/nuget-feed.tar.gz
           compression-level: 0
           retention-days: 1
