@@ -1,0 +1,3 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup><PackageReference Include="Avalonia" Version="$(AvaloniaVersion)" /><ProjectReference Include="../DiagnosticsVisualizer.Analysis/DiagnosticsVisualizer.Analysis.csproj" /></ItemGroup>
+</Project>
