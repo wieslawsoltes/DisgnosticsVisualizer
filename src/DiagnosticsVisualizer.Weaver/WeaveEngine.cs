@@ -97,7 +97,6 @@ public static class WeaveEngine
                     methodReports.ToArray(), signed && options.SigningKey is null ? "Instrumented; diagnostic signature invalidation" : "Instrumented"));
                 pending.Add((path, destination));
             }
-            // Nothing in the application output is replaced until every candidate has been rewritten successfully.
             foreach (var (source, stage) in pending)
             {
                 File.Copy(source, Path.Combine(originals, Path.GetFileName(source)), true);
@@ -139,17 +138,34 @@ public static class WeaveEngine
         directory = Path.GetFullPath(directory); var manifestPath = Path.Combine(directory, "avtrace.manifest.json");
         if (!File.Exists(manifestPath)) return;
         var manifest = JsonSerializer.Deserialize<WeaveManifest>(File.ReadAllText(manifestPath), Json)!;
+        var pending = new List<(string Original, string Target)>();
+        // Preflight all identities before changing any file. An interrupted restore remains retryable.
         foreach (var assembly in manifest.Assemblies)
         {
             if (Path.GetFileName(assembly.File) != assembly.File) throw new InvalidDataException("Invalid manifest path.");
-            var target = Path.Combine(directory, assembly.File); var original = Path.Combine(directory, ".avtrace", "original", assembly.File);
-            if (!File.Exists(original) || !File.Exists(target) || Hash(target) != assembly.OutputSha256) continue;
+            var target = Path.Combine(directory, assembly.File);
+            var original = Path.Combine(directory, ".avtrace", "original", assembly.File);
+            if (!File.Exists(original)) continue;
             if (Hash(original) != assembly.OriginalSha256) throw new InvalidDataException("Original assembly checksum mismatch.");
-            File.Copy(original, target, true);
+            var current = File.Exists(target) ? Hash(target) : "";
+            if (current == assembly.OriginalSha256) continue;
+            if (current != assembly.OutputSha256) throw new InvalidDataException("Application output changed since instrumentation; refusing to overwrite it.");
+            pending.Add((original, target));
+        }
+        foreach (var (original, target) in pending)
+        {
+            ReplaceFromCopy(original, target);
             var pdb = Path.ChangeExtension(original, ".pdb");
-            if (File.Exists(pdb)) File.Copy(pdb, Path.ChangeExtension(target, ".pdb"), true);
+            if (File.Exists(pdb)) ReplaceFromCopy(pdb, Path.ChangeExtension(target, ".pdb"));
         }
         File.Delete(manifestPath);
+    }
+    private static void ReplaceFromCopy(string original, string target)
+    {
+        // Never truncate an inode that a CLR AssemblyLoadContext may still have memory-mapped.
+        var temporary = target + ".avtrace-restore-" + Guid.NewGuid().ToString("N");
+        try { File.Copy(original, temporary); File.Move(temporary, target, true); }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
     private static string Hash(string path)
     { using var stream = File.OpenRead(path); return Convert.ToHexString(SHA256.HashData(stream)); }

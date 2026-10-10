@@ -5,7 +5,7 @@ using DiagnosticsVisualizer.Transport;
 
 namespace DiagnosticsVisualizer.Collector;
 
-/// <summary>Single target session, multiple authenticated viewers. All queues and retained history are bounded.</summary>
+/// <summary>One target session and bounded, independently backpressured authenticated viewers.</summary>
 public sealed class CaptureHub(CollectorOptions options, ILogger<CaptureHub> logger) : IAsyncDisposable
 {
     private sealed class Viewer(IFrameConnection connection)
@@ -23,15 +23,17 @@ public sealed class CaptureHub(CollectorOptions options, ILogger<CaptureHub> log
     private readonly List<Viewer> _viewers = [];
     private readonly Queue<byte[]> _history = new();
     private readonly ConcurrentDictionary<long, Pending> _requests = new();
-    private readonly Dictionary<long, string> _objectNames = [];
     private IFrameConnection? _producer;
     private Guid _session;
     private long _historyBytes, _requestId, _frames, _archiveBytes;
     private byte[]? _checkpoint;
     private FileStream? _archive;
     private SecureDatagramAssembler? _datagrams;
-    private long _udpRejected, _udpExpired;
+    private long _udpRejected, _udpExpired, _udpFrames;
     public long Frames => Interlocked.Read(ref _frames);
+    public long UdpFrames => Interlocked.Read(ref _udpFrames);
+    public long UdpRejectedPackets => Interlocked.Read(ref _udpRejected);
+    public long UdpExpiredFrames => Interlocked.Read(ref _udpExpired);
     public bool Connected { get { lock (_gate) return _producer is not null; } }
     public int Viewers { get { lock (_gate) return _viewers.Count; } }
     public string? ArchiveError { get; private set; }
@@ -42,11 +44,22 @@ public sealed class CaptureHub(CollectorOptions options, ILogger<CaptureHub> log
             if (_producer is not null) throw new InvalidOperationException("A target is already connected to this collector.");
             _producer = connection;
         }
+        var acknowledgedSession = Guid.Empty;
         try
         {
             while (await connection.ReceiveAsync(cancellationToken).ConfigureAwait(false) is { } frame)
             {
-                if (WireEnvelope.GetKind(frame) == FrameKind.Trace) await PublishAsync(frame, false, cancellationToken).ConfigureAwait(false);
+                if (WireEnvelope.GetKind(frame) == FrameKind.Trace)
+                {
+                    await PublishAsync(frame, false, cancellationToken).ConfigureAwait(false);
+                    var session = new Guid(frame.AsSpan(WireEnvelope.HeaderBytes, 16));
+                    // Publish establishes the session's authenticated UDP assembler before we acknowledge it.
+                    if (options.UdpEndpoint is not null && session != acknowledgedSession)
+                    {
+                        await connection.SendAsync(CommandCodec.Encode(DatagramNegotiation.Ready(session)), cancellationToken).ConfigureAwait(false);
+                        acknowledgedSession = session;
+                    }
+                }
                 else
                 {
                     var response = CommandCodec.Decode(frame);
@@ -71,7 +84,6 @@ public sealed class CaptureHub(CollectorOptions options, ILogger<CaptureHub> log
             if (_viewers.Count >= options.MaxViewers) throw new InvalidOperationException("Collector viewer limit reached.");
             _viewers.Add(viewer);
             if (_checkpoint is not null) Enqueue(viewer, _checkpoint);
-            // A fresh viewer receives a bounded recent tail; explicit sequence gaps remain observable.
             long copied = 0;
             var tail = _history.Reverse().TakeWhile(frame => (copied += frame.Length) <= 8 * 1024 * 1024).Take(48).Reverse().ToArray();
             foreach (var frame in tail) if (!ReferenceEquals(frame, _checkpoint)) Enqueue(viewer, frame);
@@ -116,12 +128,13 @@ public sealed class CaptureHub(CollectorOptions options, ILogger<CaptureHub> log
     }
     public async Task AcceptDatagramAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken)
     {
-        byte[]? frame = null;
+        byte[]? frame;
         lock (_gate)
         {
             if (_producer is null || _datagrams is null) return;
             _datagrams.TryAccept(packet.Span, out frame);
-            _udpRejected = _datagrams.RejectedPackets; _udpExpired = _datagrams.ExpiredFrames;
+            Interlocked.Exchange(ref _udpRejected, _datagrams.RejectedPackets);
+            Interlocked.Exchange(ref _udpExpired, _datagrams.ExpiredFrames);
         }
         if (frame is not null) await PublishAsync(frame, true, cancellationToken).ConfigureAwait(false);
     }
@@ -142,7 +155,10 @@ public sealed class CaptureHub(CollectorOptions options, ILogger<CaptureHub> log
                     if (_session != Guid.Empty)
                         foreach (var viewer in _viewers) { viewer.Queue.Complete(new IOException("Source session changed. Reconnect to start a new recording.")); viewer.Stop.Cancel(); }
                     _session = block.SessionId; _history.Clear(); _historyBytes = 0; _checkpoint = null;
-                    _datagrams?.Dispose(); _datagrams = new(_session, NetworkSecurity.DeriveDatagramKey(options.Token));
+                    _datagrams?.Dispose();
+                    var key = NetworkSecurity.DeriveDatagramKey(options.Token);
+                    try { _datagrams = new(_session, key); }
+                    finally { System.Security.Cryptography.CryptographicOperations.ZeroMemory(key); }
                 }
                 if (block.Snapshot is not null) _checkpoint = frame;
                 _history.Enqueue(frame); _historyBytes += frame.Length;
@@ -155,7 +171,9 @@ public sealed class CaptureHub(CollectorOptions options, ILogger<CaptureHub> log
                 var path = Path.Combine(options.ArchiveDirectory, $"{DateTime.UtcNow:yyyyMMdd-HHmmss}-{block.SessionId:N}.avtrace");
                 _archive = new(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read, 256 * 1024, FileOptions.Asynchronous);
             }
-            Interlocked.Increment(ref _frames); Broadcast(frame);
+            Interlocked.Increment(ref _frames);
+            if (datagram) Interlocked.Increment(ref _udpFrames);
+            Broadcast(frame);
             if (_archive is not null && ArchiveError is null)
             {
                 if (_archiveBytes + frame.Length > options.MaxArchiveBytes) ArchiveError = "Archive size limit reached; live forwarding continues.";

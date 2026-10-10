@@ -1,5 +1,5 @@
-using System.ComponentModel;
 using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Avalonia;
@@ -16,7 +16,7 @@ using DiagnosticsVisualizer.Runtime;
 
 namespace DiagnosticsVisualizer.Agent.Avalonia;
 
-/// <summary>Weakly-consistent tree checkpoints captured in bounded dispatcher slices, never an application freeze.</summary>
+/// <summary>Weak-reference observation and time-sliced UI-thread checkpoints using Avalonia diagnostic APIs.</summary>
 public sealed class AvaloniaInspector : IDisposable
 {
     private sealed class SnapshotWork(long selected)
@@ -31,10 +31,10 @@ public sealed class AvaloniaInspector : IDisposable
     private readonly CaptureSession _session;
     private readonly AgentOptions _options;
     private readonly ValueRedactor _redactor;
-    private readonly ConditionalWeakTable<object, NotificationSubscription> _observed = new();
-    private readonly List<WeakReference<NotificationSubscription>> _subscriptions = [];
     private readonly List<WeakReference<Visual>> _roots = [];
     private readonly ConditionalWeakTable<object, object> _excludedRoots = new();
+    private readonly ConditionalWeakTable<object, NotificationSubscription> _observed = new();
+    private readonly List<WeakReference<NotificationSubscription>> _subscriptions = [];
     private readonly object _subscriptionGate = new();
     private int _observedCount, _pending, _disposed;
     private long _selected;
@@ -43,9 +43,7 @@ public sealed class AvaloniaInspector : IDisposable
     public AvaloniaInspector(CaptureSession session, AgentOptions? options = null)
     { _session = session; _options = options ?? new(); _redactor = new(_options); }
     public void AttachRoot(Visual root)
-    {
-        ArgumentNullException.ThrowIfNull(root); lock (_roots) _roots.Add(new(root)); RequestSnapshot();
-    }
+    { ArgumentNullException.ThrowIfNull(root); lock (_roots) _roots.Add(new(root)); RequestSnapshot(); }
     public void ExcludeRoot(Visual root)
     { ArgumentNullException.ThrowIfNull(root); _excludedRoots.GetValue(root, static _ => new()); }
     public void Observe(object source)
@@ -67,6 +65,8 @@ public sealed class AvaloniaInspector : IDisposable
     private void BeginSnapshot()
     {
         if (IsDisposed) { Volatile.Write(ref _pending, 0); return; }
+        using var overhead = Probe.Enter((int)Subsystem.Diagnostics, "Inspector.BeginSnapshot", this);
+        using var suppression = Probe.Suppress();
         try
         {
             var work = new SnapshotWork(Interlocked.Read(ref _selected));
@@ -86,6 +86,8 @@ public sealed class AvaloniaInspector : IDisposable
     private void ProcessSlice(SnapshotWork work)
     {
         if (IsDisposed) { Volatile.Write(ref _pending, 0); return; }
+        using var overhead = Probe.Enter((int)Subsystem.Diagnostics, "Inspector.SnapshotSlice", this);
+        using var suppression = Probe.Suppress();
         var start = Stopwatch.GetTimestamp(); var count = 0;
         try
         {
@@ -129,6 +131,8 @@ public sealed class AvaloniaInspector : IDisposable
     public PropertySnapshot[] InspectProperties(long id, List<RelationSnapshot>? relations = null)
     {
         Dispatcher.UIThread.VerifyAccess();
+        using var overhead = Probe.Enter((int)Subsystem.Diagnostics, "Inspector.Properties", this);
+        using var suppression = Probe.Suppress();
         if (_session.ResolveObject(id) is not AvaloniaObject value) return [];
         var properties = new List<PropertySnapshot>(); var registry = AvaloniaPropertyRegistry.Instance;
         foreach (var property in registry.GetRegistered(value.GetType()).Concat(registry.GetRegisteredAttached(value.GetType())).Distinct().Take(2048))

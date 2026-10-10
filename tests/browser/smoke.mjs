@@ -5,8 +5,7 @@ import assert from 'node:assert/strict';
 await mkdir('artifacts/browser', { recursive: true });
 const browser = await chromium.launch({ args: ['--enable-unsafe-swiftshader'] });
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 1 });
-const errors = [];
-const logs = [];
+const errors = [], logs = [];
 page.on('pageerror', error => errors.push(String(error)));
 page.on('console', message => logs.push(`${message.type()}: ${message.text()}`));
 page.on('response', response => { if (response.status() >= 400) errors.push(`HTTP ${response.status()} ${response.url()}`); });
@@ -32,6 +31,10 @@ try {
   await writeFile('artifacts/browser/health.json', JSON.stringify(health, null, 2));
   assert.deepEqual(errors, [], 'Browser errors or missing assets were detected.');
   console.log(JSON.stringify({ status: 'passed', ...health }));
+} catch (error) {
+  await page.screenshot({ path: 'artifacts/browser/failure.png', fullPage: true }).catch(() => {});
+  await writeFile('artifacts/browser/failure.txt', String(error));
+  throw error;
 } finally {
   await writeFile('artifacts/browser/console.log', logs.join('\n'));
   await writeFile('artifacts/browser/errors.json', JSON.stringify(errors, null, 2));
