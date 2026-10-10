@@ -1,5 +1,6 @@
 using System.Globalization;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Media;
 using DiagnosticsVisualizer.Core;
 
@@ -21,7 +22,7 @@ public static class ChartPalette
     }.Select(text => (IBrush)new SolidColorBrush(Color.Parse(text))).ToArray();
     public static IBrush For(Subsystem category) => Brushes[Math.Clamp((int)category, 0, Brushes.Length - 1)];
     public static FormattedText Text(string text, double size = 11, IBrush? foreground = null)
-        => new(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default), size, foreground ?? Foreground);
+        => new(text, CultureInfo.CurrentCulture, default, new Typeface(FontFamily.Default), size, foreground ?? Foreground);
     public static void Label(DrawingContext context, string text, Point point, double size = 11, IBrush? foreground = null)
         => context.DrawText(Text(text, size, foreground), point);
     public static string ShortName(string name)

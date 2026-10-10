@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0c111b">
+  <meta name="description" content="Explore Avalonia layout, properties, styles, resources, trees and causal traces in a shared desktop and browser diagnostics workbench.">
+  <title>Diagnostics Visualizer — Avalonia</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <style>
+    :root { color-scheme:dark; font-family:Inter,Segoe UI,system-ui,sans-serif; background:#0c111b; color:#e1e9f6; }
+    html,body,#out { width:100%; height:100%; margin:0; overflow:hidden; }
+    #out { position:absolute; inset:0; }
+    #loading { position:fixed; inset:0; display:grid; place-items:center; z-index:100; background:radial-gradient(ellipse at 50% 25%,#19283a 0%,#0c111b 65%); }
+    #loading[hidden] { display:none; }
+    .card { width:min(480px,calc(100vw - 64px)); }
+    .brand { display:flex; align-items:center; gap:15px; }
+    .mark { display:grid; place-items:center; width:49px; height:49px; border:1px solid #407390; border-radius:13px; background:#173249; color:#8fddff; font-size:30px; font-weight:650; }
+    h1 { font-size:23px; line-height:1.25; margin:0; letter-spacing:-.5px; }
+    .eyebrow { color:#73cbe9; font-size:10px; letter-spacing:2px; margin:6px 0 0; }
+    p { font-size:13px; line-height:1.7; color:#90a2ba; margin:25px 0; }
+    .track { height:3px; background:#22324a; border-radius:2px; overflow:hidden; }
+    .track::after { content:""; display:block; width:35%; height:100%; background:#67d4ff; animation:load 1.8s ease-in-out infinite; }
+    #loading-message { font-size:11px; margin-top:13px; }
+    .details { margin-top:40px; padding-top:18px; border-top:1px solid #253348; font-size:11px; color:#7185a2; }
+    #fatal { color:#ffc5c5; white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; }
+    @keyframes load { from { transform:translateX(-110%); } to { transform:translateX(390%); } }
+    @media(prefers-reduced-motion:reduce) { .track::after { animation:none; width:100%; } }
+  </style>
+</head>
+<body>
+  <div id="out" role="application" aria-label="Avalonia Diagnostics Visualizer"></div>
+  <section id="loading" aria-live="polite">
+    <div class="card">
+      <div class="brand"><div class="mark" aria-hidden="true">D</div><div><h1>Diagnostics Visualizer</h1><div class="eyebrow">AVALONIA · CAPTURE WORKSPACE</div></div></div>
+      <p>A connected view of layout, styles, resources, properties and rendering. Record what happened. Follow why it happened.</p>
+      <div class="track" aria-hidden="true"></div>
+      <div id="loading-message">Loading the shared Avalonia workbench…</div>
+      <pre id="fatal" hidden></pre>
+      <div class="details">Trace files stay in your browser. Live capture connects only to the collector you choose. The initial example is explicitly synthetic.</div>
+    </div>
+  </section>
+  <script type="module" src="main.js"></script>
+</body>
+</html>

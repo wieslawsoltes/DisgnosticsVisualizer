@@ -1,0 +1,71 @@
+name: Browser and GitHub Pages
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: browser-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet workload install wasm-tools
+      - name: Publish shared Avalonia browser application
+        run: dotnet publish src/DiagnosticsVisualizer.Browser -c Release -o artifacts/browser-publish
+      - name: Locate static application
+        shell: bash
+        run: |
+          set -euo pipefail
+          site=$(find artifacts/browser-publish -name index.html -not -path '*/node_modules/*' -printf '%h\n' | head -1)
+          test -n "$site"
+          mkdir -p artifacts/site
+          cp -a "$site"/. artifacts/site/
+          touch artifacts/site/.nojekyll
+          cp artifacts/site/index.html artifacts/site/404.html
+          test -f artifacts/site/_framework/dotnet.js
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install browser test tools
+        run: |
+          npm install --prefix tests/browser --ignore-scripts
+          cd tests/browser && npx playwright install --with-deps chromium
+      - name: Exercise the published workbench in Chromium
+        run: |
+          python3 -m http.server 8080 --directory artifacts/site > /tmp/viewer-server.log 2>&1 &
+          node tests/browser/smoke.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-verification
+          path: artifacts/browser
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: artifacts/site
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: browser
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+      contents: read
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+          token: ${{ secrets.PAGES_TOKEN || github.token }}
+      - name: Deploy browser workbench
+        id: deployment
+        uses: actions/deploy-pages@v4

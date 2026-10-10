@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+  <PropertyGroup>
+    <TargetFramework>net10.0-browser</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsPackable>false</IsPackable>
+    <PublishTrimmed>false</PublishTrimmed>
+    <WasmEnableSIMD>true</WasmEnableSIMD>
+    <WasmEnableThreads>false</WasmEnableThreads>
+    <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Browser" Version="$(AvaloniaVersion)" />
+    <ProjectReference Include="../DiagnosticsVisualizer.App/DiagnosticsVisualizer.App.csproj" />
+  </ItemGroup>
+</Project>
