@@ -48,9 +48,9 @@ public sealed class WorkbenchDockFactory(IReadOnlyDictionary<string, Control> vi
             VisibleDockables = CreateList<IDockable>(timeline, flame, causal, systems, comparison), CanCreateDocument = false };
         var bottom = new ToolDock { Id = "bottom", Alignment = Alignment.Bottom, Proportion = .32, ActiveDockable = findings,
             VisibleDockables = CreateList<IDockable>(events, findings, costs) };
-        var center = new ProportionalDock { Id = "center", Orientation = Orientation.Vertical, Proportion = .55,
+        var center = new ProportionalDock { Id = "center", Orientation = Dock.Model.Core.Orientation.Vertical, Proportion = .55,
             VisibleDockables = CreateList<IDockable>(documents, new ProportionalDockSplitter(), bottom) };
-        var main = new ProportionalDock { Id = "main", Orientation = Orientation.Horizontal,
+        var main = new ProportionalDock { Id = "main", Orientation = Dock.Model.Core.Orientation.Horizontal,
             VisibleDockables = CreateList<IDockable>(left, new ProportionalDockSplitter(), center, new ProportionalDockSplitter(), right) };
         var root = CreateRootDock(); root.Id = "Root"; root.IsCollapsable = false; root.ActiveDockable = main; root.DefaultDockable = main;
         root.VisibleDockables = CreateList<IDockable>(main);
@@ -69,8 +69,8 @@ public sealed class WorkbenchDockFactory(IReadOnlyDictionary<string, Control> vi
     }
     public void Activate(string id)
     {
-        if (!_panels.TryGetValue(id, out var panel)) return;
-        if (panel.Owner is IDock dock) dock.ActiveDockable = panel;
-        SetFocusedDockable(panel);
+        if (!_panels.TryGetValue(id, out var panel) || panel.Owner is not IDock dock) return;
+        dock.ActiveDockable = panel;
+        SetFocusedDockable(dock, panel);
     }
 }
