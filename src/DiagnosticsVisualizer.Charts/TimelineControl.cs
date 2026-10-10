@@ -23,13 +23,17 @@ public sealed class TimelineControl : Control
     private Dictionary<Subsystem, int> _categoryRows = [];
     private Dictionary<int, int> _threadRows = [];
     private int[,]? _density;
+    private Guid _session;
+    private bool _fit = true;
     private long _traceStart, _traceEnd = 1;
     private double _start, _end = 1;
     private Point? _dragStart;
     private double _dragTimeStart, _dragTimeEnd;
     private bool _dragged;
     private int _rows;
-    private const double Header = 34, Left = 156, Row = 35;
+    private const double Header = 34, Row = 30;
+    private double Left => Grouping == TimelineGrouping.ThreadFlame ? 108 : 144;
+    private static readonly Pen SelectedPen = new(Brushes.White, 2), RelatedPen = new(ChartPalette.Accent, 1.5);
     private const int DensityBuckets = 2048;
     public TraceView? Trace { get => GetValue(TraceProperty); set => SetValue(TraceProperty, value); }
     public long SelectedEventId { get => GetValue(SelectedEventIdProperty); set => SetValue(SelectedEventIdProperty, value); }
@@ -60,13 +64,19 @@ public sealed class TimelineControl : Control
             var lookup = events.ToDictionary(e => e.Id);
             foreach (var e in events)
             {
-                var current = e; var depth = 0; var seen = new HashSet<long>();
-                while (depth < 8 && current.ParentId != 0 && seen.Add(current.Id) && lookup.TryGetValue(current.ParentId, out var parent) && parent.ThreadId == e.ThreadId)
+                var current = e; var depth = 0;
+                while (depth < 8 && current.ParentId != 0 && current.ParentId != current.Id && lookup.TryGetValue(current.ParentId, out var parent) && parent.ThreadId == e.ThreadId && parent.Timestamp <= current.Timestamp && parent.End >= current.End)
                 { depth++; current = parent; }
                 _depths[e.Id] = depth;
             }
         }
-        _rows = Grouping == TimelineGrouping.Subsystem ? _categoryRows.Count : _threadRows.Count * 9;
+        _rows = _categoryRows.Count;
+        if (Grouping == TimelineGrouping.ThreadFlame)
+        {
+            var maximumDepths = events.GroupBy(e => e.ThreadId).ToDictionary(g => g.Key, g => g.Max(e => _depths.GetValueOrDefault(e.Id)));
+            _rows = 0;
+            foreach (var thread in _threadRows.Keys.ToArray()) { _threadRows[thread] = _rows; _rows += maximumDepths[thread] + 1; }
+        }
         _density = new int[Math.Max(1, _categoryRows.Count), DensityBuckets];
         var span = _traceEnd - (double)_traceStart;
         foreach (var e in events)
@@ -74,17 +84,25 @@ public sealed class TimelineControl : Control
             var bucket = Math.Clamp((int)((e.Timestamp - (double)_traceStart) / span * DensityBuckets), 0, DensityBuckets - 1);
             var row = _categoryRows[e.Subsystem]; if (_density[row, bucket] < int.MaxValue) _density[row, bucket]++;
         }
-        Fit(); InvalidateMeasure();
+        if (_session != Trace?.SessionId) { _session = Trace?.SessionId ?? Guid.Empty; _fit = true; }
+        if (_fit) Fit(); else InvalidateVisual(); InvalidateMeasure();
+    }
+    public void SetViewport(double start, double end)
+    {
+        if (!double.IsFinite(start) || !double.IsFinite(end) || end <= start) return;
+        if (_start == start && _end == end) return;
+        _fit = false; _start = start; _end = end; InvalidateVisual();
     }
     public void Fit()
     {
+        _fit = true;
         _start = _traceStart; _end = _traceEnd;
         var padding = Math.Max(1, (_end - _start) * 0.018); _start -= padding; _end += padding;
         InvalidateVisual(); ViewportChanged?.Invoke(_start, _end);
     }
     public void FocusEvent(TraceEvent e)
     {
-        SelectedEventId = e.Id;
+        _fit = false; SelectedEventId = e.Id;
         var span = Math.Max(e.Duration * 4d, (Trace?.Frequency ?? 1_000_000) * .025);
         _start = e.Timestamp - span * .1; _end = _start + span; InvalidateVisual(); ViewportChanged?.Invoke(_start, _end);
     }
@@ -118,7 +136,7 @@ public sealed class TimelineControl : Control
             }
         else
             foreach (var (thread, row) in _threadRows)
-                ChartPalette.Label(context, $"Thread {thread}", new(15, Header + row * 9 * Row + 10), 11);
+                ChartPalette.Label(context, $"Thread {thread}", new(15, Header + row * Row + 10), 11);
         context.DrawLine(ChartPalette.Grid, new(Left, 0), new(Left, Bounds.Height));
         var visible = _index.Query(ClampLong(_start), ClampLong(_end), 50_001);
         DensityMode = visible.Count > 50_000 && Grouping == TimelineGrouping.Subsystem;
@@ -129,13 +147,13 @@ public sealed class TimelineControl : Control
             {
                 foreach (var e in visible.Take(50_000))
                 {
-                    var row = Grouping == TimelineGrouping.Subsystem ? _categoryRows[e.Subsystem] : _threadRows[e.ThreadId] * 9 + _depths.GetValueOrDefault(e.Id);
+                    var row = Grouping == TimelineGrouping.Subsystem ? _categoryRows[e.Subsystem] : _threadRows[e.ThreadId] + _depths.GetValueOrDefault(e.Id);
                     var x = Left + (e.Timestamp - _start) * scale;
                     var right = Left + (e.End - _start) * scale;
                     var rect = new Rect(Math.Max(Left, x), Header + row * Row + 7, Math.Max(1.5, Math.Min(Left + width, right) - Math.Max(Left, x)), Row - 14);
                     var selected = e.Id == SelectedEventId;
                     var related = SelectedObjectId != 0 && e.ObjectId == SelectedObjectId;
-                    context.DrawRectangle(ChartPalette.For(e.Subsystem), selected ? new Pen(Brushes.White, 2) : related ? new Pen(ChartPalette.Accent, 1.5) : null, rect, 3, 3);
+                    context.DrawRectangle(ChartPalette.For(e.Subsystem), selected ? SelectedPen : related ? RelatedPen : null, rect, 3, 3);
                     if (rect.Width >= 54)
                     {
                         var label = Label(trace.Name(e));
@@ -145,7 +163,7 @@ public sealed class TimelineControl : Control
                 }
             }
         }
-        ChartPalette.Label(context, DensityMode ? "EVENT DENSITY" : "CPU SPANS", new(14, 10), 10, ChartPalette.Muted);
+        ChartPalette.Label(context, DensityMode ? "EVENT DENSITY" : "MANAGED SPANS", new(14, 10), 10, ChartPalette.Muted);
         if (visible.Count > 50_000) ChartPalette.Label(context, DensityMode ? "Density overview · zoom in for individual spans" : "Span display budget reached · zoom in", new(Left + 12, Header + 4), 11);
     }
     private void DrawDensity(DrawingContext context, double scale)
@@ -184,7 +202,7 @@ public sealed class TimelineControl : Control
         {
             var delta = position.X - start.X; _dragged |= Math.Abs(delta) > 3;
             var ticks = delta / Math.Max(1, Bounds.Width - Left - 12) * (_dragTimeEnd - _dragTimeStart);
-            _start = _dragTimeStart - ticks; _end = _dragTimeEnd - ticks; InvalidateVisual(); return;
+            _fit = false; _start = _dragTimeStart - ticks; _end = _dragTimeEnd - ticks; InvalidateVisual(); return;
         }
         var hit = Hit(position);
         ToolTip.SetTip(this, hit is { } value && Trace is { } trace ? $"{trace.Name(value)}\n{trace.Milliseconds(value.Duration):F3} ms · thread {value.ThreadId} · object #{value.ObjectId}\nEvent #{value.Id} · parent #{value.ParentId}" : null);
@@ -204,7 +222,7 @@ public sealed class TimelineControl : Control
         var ratio = Math.Clamp((e.GetPosition(this).X - Left) / Math.Max(1, Bounds.Width - Left - 12), 0, 1);
         var point = _start + ratio * (_end - _start);
         var span = Math.Clamp((_end - _start) * Math.Pow(1.22, -e.Delta.Y), 1, Math.Max(1, (_traceEnd - (double)_traceStart) * 20));
-        _start = point - ratio * span; _end = _start + span; InvalidateVisual(); ViewportChanged?.Invoke(_start, _end); e.Handled = true;
+        _fit = false; _start = point - ratio * span; _end = _start + span; InvalidateVisual(); ViewportChanged?.Invoke(_start, _end); e.Handled = true;
     }
     private TraceEvent? Hit(Point point)
     {

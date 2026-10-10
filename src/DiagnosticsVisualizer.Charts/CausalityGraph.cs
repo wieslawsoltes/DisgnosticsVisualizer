@@ -23,6 +23,8 @@ public sealed class CausalityGraph : Control
     private Point? _drag;
     private Vector _startOffset;
     private bool _moved;
+    private bool _autoFit = true;
+    private static readonly Pen SelectedNodePen = new(ChartPalette.Accent, 2), NodePen = new(ChartPalette.Grid.Brush, 1);
     private static readonly Pen ArrowPen = new(ChartPalette.Muted, 1);
     public event Action<TraceEvent>? EventSelected;
     public CausalityGraph() { ClipToBounds = true; MinHeight = 280; }
@@ -35,7 +37,19 @@ public sealed class CausalityGraph : Control
         Rebuild();
     }
     public void SelectEvent(long id) { if (_selection == id) return; _selection = id; Rebuild(); }
-    public void Fit() { _zoom = .85; _offset = new(24, 56); InvalidateVisual(); }
+    public void Fit()
+    {
+        _autoFit = true;
+        if (_nodes.Count == 0) return;
+        var extent = _nodes[0].Bounds; foreach (var node in _nodes) extent = extent.Union(node.Bounds);
+        var width = Math.Max(300, Bounds.Width); var height = Math.Max(200, Bounds.Height - 34);
+        _zoom = Math.Clamp(Math.Min((width - 48) / Math.Max(1, extent.Width), (height - 48) / Math.Max(1, extent.Height)), .1, 1.25);
+        _offset = new(width / 2 - extent.Center.X * _zoom, 34 + height / 2 - extent.Center.Y * _zoom); InvalidateVisual();
+    }
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change); if (change.Property == BoundsProperty && _autoFit) Fit();
+    }
     private void Rebuild()
     {
         _nodes.Clear(); _edges.Clear();
@@ -86,7 +100,7 @@ public sealed class CausalityGraph : Control
             }
             _edges.Add(new(geometry, new Pen(edge.Inferred ? ChartPalette.Muted : ChartPalette.For(from.Event.Subsystem), 1.3), b));
         }
-        InvalidateVisual();
+        if (_autoFit) Fit(); else InvalidateVisual();
     }
     public override void Render(DrawingContext context)
     {
@@ -101,7 +115,7 @@ public sealed class CausalityGraph : Control
             }
             foreach (var node in _nodes)
             {
-                context.DrawRectangle(ChartPalette.Alternate, new Pen(node.Event.Id == _selection ? ChartPalette.Accent : ChartPalette.Grid.Brush, node.Event.Id == _selection ? 2 : 1), node.Bounds, 7, 7);
+                context.DrawRectangle(ChartPalette.Alternate, node.Event.Id == _selection ? SelectedNodePen : NodePen, node.Bounds, 7, 7);
                 context.FillRectangle(ChartPalette.For(node.Event.Subsystem), new(node.Bounds.X + 1, node.Bounds.Y + 12, 3, 40));
                 context.DrawText(node.Title, node.Bounds.TopLeft + new Vector(13, 12)); context.DrawText(node.Detail, node.Bounds.TopLeft + new Vector(13, 36));
             }
@@ -139,7 +153,7 @@ public sealed class CausalityGraph : Control
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
     {
         base.OnPointerWheelChanged(e); if (!e.KeyModifiers.HasFlag(KeyModifiers.Control)) return;
-        var position = e.GetPosition(this); var world = (position - _offset) / _zoom;
+        var position = e.GetPosition(this); _autoFit = false; var world = (position - _offset) / _zoom;
         _zoom = Math.Clamp(_zoom * Math.Pow(1.15, e.Delta.Y), .2, 3); _offset = position - world * _zoom; InvalidateVisual(); e.Handled = true;
     }
 }

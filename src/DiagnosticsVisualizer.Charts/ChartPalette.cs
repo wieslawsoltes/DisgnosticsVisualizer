@@ -8,12 +8,12 @@ namespace DiagnosticsVisualizer.Charts;
 
 public static class ChartPalette
 {
-    public static readonly IBrush Background = new SolidColorBrush(Color.Parse("#101620"));
-    public static readonly IBrush Alternate = new SolidColorBrush(Color.Parse("#141C29"));
-    public static readonly IBrush Foreground = new SolidColorBrush(Color.Parse("#DCE5F4"));
-    public static readonly IBrush Muted = new SolidColorBrush(Color.Parse("#8292AB"));
-    public static readonly IBrush Accent = new SolidColorBrush(Color.Parse("#67D4FF"));
-    public static readonly Pen Grid = new(new SolidColorBrush(Color.Parse("#253247")), 1);
+    public static readonly IBrush Background = new SolidColorBrush(Color.Parse("#1F2124"));
+    public static readonly IBrush Alternate = new SolidColorBrush(Color.Parse("#2B2D30"));
+    public static readonly IBrush Foreground = new SolidColorBrush(Color.Parse("#DFE1E5"));
+    public static readonly IBrush Muted = new SolidColorBrush(Color.Parse("#9DA0A8"));
+    public static readonly IBrush Accent = new SolidColorBrush(Color.Parse("#4C9FFF"));
+    public static readonly Pen Grid = new(new SolidColorBrush(Color.Parse("#393C40")), 1);
     private static readonly IBrush[] Brushes = new[]
     {
         "#6AA9FF", "#B394FF", "#CB8DFF", "#F0BD65", "#ED9A75", "#70D8BA", "#7F9CEC",

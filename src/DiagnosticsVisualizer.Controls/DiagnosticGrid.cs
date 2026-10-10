@@ -12,13 +12,13 @@ public static class DiagnosticGrid
         {
             AutoGenerateColumns = false, IsReadOnly = true, CanUserReorderColumns = true, CanUserResizeColumns = true,
             GridLinesVisibility = DataGridGridLinesVisibility.Horizontal, HeadersVisibility = DataGridHeadersVisibility.Column,
-            SelectionMode = DataGridSelectionMode.Single, RowHeight = 28, ColumnHeaderHeight = 30,
+            SelectionMode = DataGridSelectionMode.Single, RowHeight = 26, ColumnHeaderHeight = 28,
             BorderThickness = new Thickness(0), FontSize = 11
         };
         foreach (var (header, property, width) in columns)
             grid.Columns.Add(new DataGridTextColumn
             {
-                Header = header, Binding = new Binding(property),
+                Header = header, FontSize = 11, Binding = new Binding(property) { StringFormat = property.EndsWith("Ms", StringComparison.Ordinal) || property.EndsWith("Percent", StringComparison.Ordinal) ? "{0:N3}" : null },
                 Width = width < 0 ? new DataGridLength(1, DataGridLengthUnitType.Star) : new DataGridLength(width)
             });
         return grid;
