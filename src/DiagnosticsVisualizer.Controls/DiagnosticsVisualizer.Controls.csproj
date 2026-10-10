@@ -1,0 +1,3 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup><PackageReference Include="Avalonia.Controls.DataGrid" Version="$(AvaloniaVersion)" /><ProjectReference Include="../DiagnosticsVisualizer.Charts/DiagnosticsVisualizer.Charts.csproj" /></ItemGroup>
+</Project>

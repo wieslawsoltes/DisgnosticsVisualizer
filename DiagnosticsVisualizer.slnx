@@ -10,6 +10,7 @@
     <Project Path="src/DiagnosticsVisualizer.Collector/DiagnosticsVisualizer.Collector.csproj" />
     <Project Path="src/DiagnosticsVisualizer.Build/DiagnosticsVisualizer.Build.csproj" />
     <Project Path="src/DiagnosticsVisualizer.Charts/DiagnosticsVisualizer.Charts.csproj" />
+    <Project Path="src/DiagnosticsVisualizer.Controls/DiagnosticsVisualizer.Controls.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/DiagnosticsVisualizer.Tests/DiagnosticsVisualizer.Tests.csproj" />
