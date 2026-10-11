@@ -4,9 +4,17 @@ A cross-subsystem Avalonia trace recorder, inspector and Rider-style docking wor
 
 [Browser workbench](https://wieslawsoltes.github.io/DisgnosticsVisualizer/) · [Build/integration](https://github.com/wieslawsoltes/DisgnosticsVisualizer/actions/workflows/build.yml) · [Browser verification/deployment](https://github.com/wieslawsoltes/DisgnosticsVisualizer/actions/workflows/browser.yml)
 
-**0.1.0-alpha.6.** An actively validated implementation, not a claim of complete coverage of every Avalonia release or Chrome DevTools feature. The browser starts with a labelled synthetic example; it never pretends to be attached to an application. Check the deployment workflow for the current publication status.
+**0.1.0-alpha.7.** An actively validated implementation, not a claim of complete coverage of every Avalonia release or Chrome DevTools feature. The browser starts with a labelled synthetic example; it never pretends to be attached to an application. Check the deployment workflow for the current publication status.
 
-### New in alpha.6
+### New in alpha.7
+
+**XAML origins** connect successful object construction and compiled root population to original portable-PDB sequence points and IL offsets. Repeated template instances retain distinct identities. Tree selection can reveal the latest retained origin in Sources; source text is chosen explicitly and checksum-verified, never reconstructed or automatically fetched from a trace. Enable `AVTRACE_XAML_OBJECTS=1` on deep-instrumented output and keep PDBs beside the input assemblies during weaving.
+
+**Dispatcher queue** records admission, priority transitions, callback invocation, caught callback exceptions, return and abort. The common-scale chart separates inactive timer residence, runnable delay and callback time; missing markers and transport loss remain unknown. Enable `AVTRACE_DISPATCHER_OPERATIONS=1` to connect even non-ExecutionContext-flowing Post callbacks to their observed admission. The adapter checks the full supported queue shape before rewriting.
+
+The **Investigate** docking preset brings queue timing, XAML origins, dependencies and sources together. Rider colors and dark theme variants are scoped to diagnostics and floating documents rather than changing the embedding application's requested theme. Selected document titles have an explicit contrast token; tables preserve readable column widths with horizontal scrolling. Source/dispatcher indexes are prepared with analysis rather than rescanning the trace on selection. Existing saved workspace layouts remain compatible. See [XAML and dispatcher diagnostics](docs/xaml-dispatcher.md) for semantics, budgets and tests.
+
+### Previously in alpha.6
 
 Standard Task/ValueTask/async-void **state-machine lifetimes** are available with `AVTRACE_ASYNC_OPERATIONS=1` on deep-instrumented output. Returned awaitables are neither wrapped nor consumed. The shared Async operations document provides outcome filtering, a bounded waterfall and exact range selection; wait time is not counted as CPU/self time.
 
@@ -20,7 +28,7 @@ Zoomable subsystem timeline, thread flame chart, selected-event causal graph, su
 
 The actual **Rider Dark compact preset** is provided by Dock's Avalonia 11 package lane: `Dock.Avalonia.v11` and `Dock.Avalonia.Themes.Fluent.v11` **11.3.22**, shared `Dock.Model.Mvvm` **12.1.0.7**. Avalonia remains **11.3.22**. Do not mix unsuffixed Avalonia 12 UI packages into this build.
 
-Inspect, Profile and Compare presets are available from the toolbar and command palette. Each now opens a focused set of documents rather than every tab at once; additional tools open on demand. Existing saved layouts are preserved; reapply a preset to adopt the focused defaults. Panel activation rails, cached documents, and a single-owner view host preserve controls across docking/template changes. Workspace topology, selected tabs, proportions, pinned panels and floating window geometry are saved every two seconds and on detach. Desktop settings live under local application data; browser settings use local storage. Only whitelisted panel identities and geometry are stored, never trace content or tokens. Invalid, oversized, deeply nested or duplicate layouts are rejected before the live layout changes.
+Inspect, Profile, Compare and Investigate presets are available from the toolbar and command palette. Each now opens a focused set of documents rather than every tab at once; additional tools open on demand. Existing saved layouts are preserved; reapply a preset to adopt the focused defaults. Panel activation rails, cached documents, and a single-owner view host preserve controls across docking/template changes. Workspace topology, selected tabs, proportions, pinned panels and floating window geometry are saved every two seconds and on detach. Desktop settings live under local application data; browser settings use local storage. Only whitelisted panel identities and geometry are stored, never trace content or tokens. Invalid, oversized, deeply nested or duplicate layouts are rejected before the live layout changes.
 
 Drag the global span-activity overview to select a half-open analysis range. Statistics, top-down/bottom-up calling contexts, thread span coverage and the event log use this range. Percentiles use observed, range-clipped durations. Exclusive time subtracts the **union of same-thread nested child intervals**, not asynchronous continuation time. Span coverage includes waits inside instrumented scopes and is **not CPU utilization**. Call-tree depth/node limits are explicit. Timeline/flame charts preserve zoom during same-session refreshes.
 
@@ -38,7 +46,7 @@ Open `.avtrace`, recover complete batches from a truncated final write, export r
 
 ## Source-linked diagnostics
 
-Select a recorded event and press `F12`, use **Event details → Source**, or the Sources rail icon. The shared Sources document shows the original assembly/MVID/method token, signature, first visible portable-PDB sequence point, checksum and validated SourceLink URL. Choose the matching UTF-8 source file explicitly to view a read-only, numbered excerpt; a PDB checksum mismatch is rejected. Source text and local absolute paths are not embedded in captures. No file path or URL in a trace is automatically opened or fetched. Source metadata survives binary re-export and Chrome Trace JSON export. See [source and causality](docs/source-causality.md).
+Select a recorded event and press `F12`, use **Event details → Source**, or the Sources rail icon. The shared Sources document shows the original assembly/MVID/method token, signature, portable-PDB sequence point (method entry or observed XAML site), checksum and validated SourceLink URL. Choose the matching UTF-8 source file explicitly to view a read-only, numbered excerpt; a PDB checksum mismatch is rejected. Source text and local absolute paths are not embedded in captures. No file path or URL in a trace is automatically opened or fetched. Source metadata survives binary re-export and Chrome Trace JSON export. See [source and causality](docs/source-causality.md).
 
 ## Projects
 
@@ -84,7 +92,7 @@ Build the local feed with `bash eng/pack.sh`. Add this reference to the applicat
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="DiagnosticsVisualizer.Build" Version="0.1.0-alpha.6" />
+  <PackageReference Include="DiagnosticsVisualizer.Build" Version="0.1.0-alpha.7" />
 </ItemGroup>
 <PropertyGroup>
   <DiagnosticsEnabled>true</DiagnosticsEnabled>
@@ -162,7 +170,7 @@ Hooks cover layout, styles/selectors, resource lookups, templates/themes, dispat
 
 Snapshots are weakly consistent checkpoints, not a stop-the-world heap image. SnapshotDiffer keeps visual/logical/templated-parent changes separate and treats absence in truncated snapshots as unknown. The wire codec delta-encodes event fields inside independently decodable batches; reliable connections negotiate baseline-hashed snapshot deltas with independent per-connection checkpoints and legacy full-frame fallback. UDP event batches remain stateless. See [stateful transport](docs/STATEFUL-PROTOCOL.md). Findings distinguish recorded relationships from inferred symptoms.
 
-Not yet provided: arbitrary-process CLR profiler/ReJIT attachment, exhaustive causality through custom/unsafe schedulers, exact XAML element-to-IL source maps, heap leak proof, GPU counters, or complete per-version subsystem semantic inspectors.
+Not yet provided: arbitrary-process CLR profiler/ReJIT attachment, exhaustive causality through custom/unsafe schedulers, exhaustive XAML setter/element-to-IL maps beyond recorded compiler points, heap leak proof, GPU counters, or complete per-version subsystem semantic inspectors.
 
 ## Publishing
 
