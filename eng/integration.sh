@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-version="${1:-0.1.0-alpha.4}"
+version="${1:-0.1.0-alpha.5}"
 root="$PWD"
 mkdir -p artifacts/integration
 sample=tests/DiagnosticsVisualizer.Sample
@@ -10,6 +10,7 @@ export AVTRACE_SNAPSHOT_INTERVAL_MS=250
 export AVTRACE_EVENTS_PER_THREAD=65536
 export AVTRACE_MAX_THREADS=16
 export AVTRACE_SAMPLE_EVERY=1
+export AVTRACE_FLOW_EXECUTION_CONTEXT=1
 export AVTRACE_SUBSYSTEM_MASK=0xFFFFFFFFFFFFFFFF
 dotnet publish "$sample" -c Release -o artifacts/integration/target \
   -p:Version="$version" -p:UsePackagedDiagnostics=true \
@@ -20,6 +21,7 @@ rm -f artifacts/integration/sample.avtrace
 AVTRACE_ENABLED=1 AVTRACE_FILE="$root/artifacts/integration/sample.avtrace" \
   timeout 45s dotnet artifacts/integration/target/DiagnosticsVisualizer.Sample.dll | tee artifacts/integration/workload.log
 grep -q 'WORKLOAD_OK clicks=24 direct=23 items=4' artifacts/integration/workload.log
+grep -q 'ASYNC_WORKLOAD_OK notifications=1' artifacts/integration/workload.log
 verifier=tests/DiagnosticsVisualizer.CaptureVerifier/bin/Release/net10.0/DiagnosticsVisualizer.CaptureVerifier.dll
 dotnet "$verifier" artifacts/integration/sample.avtrace artifacts/integration/capture-report.json
 collector=src/DiagnosticsVisualizer.Collector/bin/Release/net10.0/DiagnosticsVisualizer.Collector.dll

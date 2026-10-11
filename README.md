@@ -4,7 +4,7 @@ A cross-subsystem Avalonia trace recorder, inspector and Rider-style docking wor
 
 [Browser workbench](https://wieslawsoltes.github.io/DisgnosticsVisualizer/) · [Build/integration](https://github.com/wieslawsoltes/DisgnosticsVisualizer/actions/workflows/build.yml) · [Browser verification/deployment](https://github.com/wieslawsoltes/DisgnosticsVisualizer/actions/workflows/browser.yml)
 
-**0.1.0-alpha.3.** An actively validated implementation, not a claim of complete coverage of every Avalonia release or Chrome DevTools feature. The browser starts with a labelled synthetic example; it never pretends to be attached to an application. Check the deployment workflow for the current publication status.
+**0.1.0-alpha.5.** An actively validated implementation, not a claim of complete coverage of every Avalonia release or Chrome DevTools feature. The browser starts with a labelled synthetic example; it never pretends to be attached to an application. Check the deployment workflow for the current publication status.
 
 ## Workbench
 
@@ -12,7 +12,7 @@ Zoomable subsystem timeline, thread flame chart, selected-event causal graph, su
 
 The actual **Rider Dark compact preset** is provided by Dock's Avalonia 11 package lane: `Dock.Avalonia.v11` and `Dock.Avalonia.Themes.Fluent.v11` **11.3.22**, shared `Dock.Model.Mvvm` **12.1.0.7**. Avalonia remains **11.3.22**. Do not mix unsuffixed Avalonia 12 UI packages into this build.
 
-Inspect, Profile and Compare presets are available from the toolbar and command palette. Panel activation rails, cached documents, and a single-owner view host preserve controls across docking/template changes. Workspace topology, selected tabs, proportions, pinned panels and floating window geometry are saved every two seconds and on detach. Desktop settings live under local application data; browser settings use local storage. Only whitelisted panel identities and geometry are stored, never trace content or tokens. Invalid, oversized, deeply nested or duplicate layouts are rejected before the live layout changes.
+Inspect, Profile and Compare presets are available from the toolbar and command palette. Each now opens a focused set of documents rather than every tab at once; additional tools open on demand. Existing saved layouts are preserved; reapply a preset to adopt the focused defaults. Panel activation rails, cached documents, and a single-owner view host preserve controls across docking/template changes. Workspace topology, selected tabs, proportions, pinned panels and floating window geometry are saved every two seconds and on detach. Desktop settings live under local application data; browser settings use local storage. Only whitelisted panel identities and geometry are stored, never trace content or tokens. Invalid, oversized, deeply nested or duplicate layouts are rejected before the live layout changes.
 
 Drag the global span-activity overview to select a half-open analysis range. Statistics, top-down/bottom-up calling contexts, thread span coverage and the event log use this range. Percentiles use observed, range-clipped durations. Exclusive time subtracts the **union of same-thread nested child intervals**, not asynchronous continuation time. Span coverage includes waits inside instrumented scopes and is **not CPU utilization**. Call-tree depth/node limits are explicit. Timeline/flame charts preserve zoom during same-session refreshes.
 
@@ -26,7 +26,11 @@ object=12 duration>500us
 
 The layout scene visualizes recorded visual-parent-relative layout bounds, not unrecorded render transforms/clipping. Snapshot history retains up to 32 checkpoints/65,536 nodes, separates visual/logical/templated-parent changes, and preserves truncated-presence uncertainty. Checkpoint labels identify batches, not atomic event-time states. Bookmarks currently live in the loaded session.
 
-Open `.avtrace`, recover complete batches from a truncated final write, export retained data or Chrome Trace JSON, compare workload traces, or connect to a collector. `Ctrl+Shift+P` opens commands; `Ctrl+O` opens, `Ctrl+S` saves, `Ctrl+L` connects, `Ctrl+B` bookmarks, and `F8` pauses/resumes a connected target. Drag timelines to pan, Ctrl+wheel to zoom, and double-click to fit.
+Open `.avtrace`, recover complete batches from a truncated final write, export retained data or Chrome Trace JSON, compare workload traces, or connect to a collector. `Ctrl+Shift+P` opens commands; `Ctrl+O` opens, `Ctrl+S` saves, `Ctrl+L` connects, `Ctrl+B` bookmarks, `F12` opens Sources, and `F8` pauses/resumes a connected target. Drag timelines to pan, Ctrl+wheel to zoom, and double-click to fit.
+
+## Source-linked diagnostics
+
+Select a recorded event and press `F12`, use **Event details → Source**, or the Sources rail icon. The shared Sources document shows the original assembly/MVID/method token, signature, first visible portable-PDB sequence point, checksum and validated SourceLink URL. Choose the matching UTF-8 source file explicitly to view a read-only, numbered excerpt; a PDB checksum mismatch is rejected. Source text and local absolute paths are not embedded in captures. No file path or URL in a trace is automatically opened or fetched. Source metadata survives binary re-export and Chrome Trace JSON export. See [source and causality](docs/source-causality.md).
 
 ## Projects
 
@@ -72,7 +76,7 @@ Build the local feed with `bash eng/pack.sh`. Add this reference to the applicat
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="DiagnosticsVisualizer.Build" Version="0.1.0-alpha.3" />
+  <PackageReference Include="DiagnosticsVisualizer.Build" Version="0.1.0-alpha.5" />
 </ItemGroup>
 <PropertyGroup>
   <DiagnosticsEnabled>true</DiagnosticsEnabled>
@@ -90,7 +94,7 @@ AVTRACE_ENABLED=1 AVTRACE_FILE="$PWD/session.avtrace" \
   dotnet artifacts/instrumented/YourApplication.dll
 ```
 
-`AVTRACE_FILE` must not already exist. The injected module initializer is inert unless `AVTRACE_ENABLED=1`. Event recording starts early; tree inspection waits for Avalonia platform initialization. Framework assemblies and the entry application are candidates by default; use `DiagnosticsIncludeAssemblies` for other application libraries. Deep mode adds application control layout overrides and selected property getters.
+`AVTRACE_FILE` must not already exist. The injected module initializer is inert unless `AVTRACE_ENABLED=1`. Event recording starts early; tree inspection waits for Avalonia platform initialization. Framework assemblies and the entry application are candidates by default; use `DiagnosticsIncludeAssemblies` for other application libraries. Deep mode adds application control layout overrides, selected property getters and application async kickoff methods.
 
 Signed identities require explicit diagnostic-only invalidation or `DiagnosticsSigningKey`. Never distribute signature-invalidated outputs as production binaries. Package-cache/shared-runtime paths and native/ReadyToRun images are rejected. MSBuild integration rejects trimmed, NativeAOT, ReadyToRun, single-file and browser target instrumentation. The browser is a **viewer**, not an IL-instrumented target.
 
@@ -134,23 +138,23 @@ using var view = new WorkbenchView(model);
 
 `Inspector.AttachRoot` supports explicit roots; `Inspector.ExcludeRoot` omits the workbench root from snapshots. It does not remove rendering cost. Prefer an out-of-process viewer for target performance investigations. See [embedding](docs/embedding.md).
 
-Add application spans with `Probe.Enter`, instant events or annotated methods with `TraceAttribute`. `TraceContext.Capture()` creates a session-scoped parent token that can cross threads/await; `token.Resume()` installs it for a synchronous continuation. Scope/context leases are ref structs and cannot span an await. This is explicit causal propagation, not automatic interception of every Task scheduler.
+Add application spans with `Probe.Enter`, instant events or annotated methods with `TraceAttribute`. `TraceContext.Capture()` creates a session-scoped parent token that can cross threads/await; `token.Resume()` installs it for a synchronous continuation. Scope/context leases are ref structs and cannot span an await. For automatic propagation through flowing .NET execution contexts, opt in with `AVTRACE_FLOW_EXECUTION_CONTEXT=1` or `CaptureOptions.FlowExecutionContext = true`. This covers ordinary awaits and Task.Run without modifying application source, including ConfigureAwait(false). Suppressed/unsafe execution-context boundaries still require explicit tokens. Async kickoff span duration ends at synchronous return, not task completion.
 
 ## Performance and validation
 
-Warm producer probes use bounded per-thread rings and cached metadata. A unit test checks **zero managed allocations for 10,000 warmed enabled spans**. Initial thread/object/name registration allocates: the entire agent is not allocation-free. File/network work runs on background tasks. Snapshot traversal yields between slices (default 2 ms/128 nodes), but custom getters can exceed a slice budget. Inspector work is suppressed from ordinary instrumentation and separately marked as diagnostics overhead.
+Warm producer probes use bounded per-thread rings and cached metadata. A unit test checks **zero managed allocations for 10,000 warmed enabled spans in the default mode**. Optional execution-context propagation adds AsyncLocal allocations per recorded span and is disabled by default. Initial thread/object/name registration allocates: the entire agent is not allocation-free. File/network work runs on background tasks. Snapshot traversal yields between slices (default 2 ms/128 nodes), but custom getters can exceed a slice budget. Inspector work is suppressed from ordinary instrumentation and separately marked as diagnostics overhead.
 
 CaptureOptions configures capacities, identity/metadata budgets, sampling and subsystem masks. Event loss, probe faults, metadata drops, missing batches and retained-history eviction are accounted separately. Rendering has a display budget/density fallback; causal neighborhoods are bounded. No universal overhead percentage or GPU timing claim is made. Measure representative workloads with recording disabled, balanced, deep, and with/without the viewer.
 
-CI builds/tests, validates all ten packages, and publishes/launches an **actual rewritten headless Avalonia application consuming those packages**, with no diagnostics API calls in its source. A second execution exercises TCP establishment, encrypted UDP, WebSocket viewing and a control round trip. Reports and logs are retained. Headless UI tests exercise range queries, invalid settings, view ownership, actual pinning/floating and layout restoration. Browser CI launches the actual published WebAssembly app in Chromium, checking keyboard commands, causal navigation, pointer range selection, saved-workspace reload, screenshots and console/network errors. Workflow results, not the presence of tests, determine which gates passed.
+CI builds/tests, validates all ten packages, and publishes/launches an **actual rewritten headless Avalonia application consuming those packages**, with no diagnostics API calls in its source. A second execution exercises TCP establishment, encrypted UDP, WebSocket viewing and a control round trip. Reports and logs are retained. The reference workload also executes real animation and an async background notification, requiring all subsystem categories and a cross-thread notification linked to an application async kickoff. Headless UI tests exercise source checksum validation, range queries, invalid settings, view ownership, actual pinning/floating and layout restoration. Browser CI launches the actual published WebAssembly app in Chromium, checking keyboard commands, F12 source navigation, causal navigation, pointer range selection, saved-workspace reload, screenshots and console/network errors. Workflow results, not the presence of tests, determine which gates passed.
 
 ## Coverage boundaries
 
 Hooks cover layout, styles/selectors, resource lookups, templates/themes, dispatcher operations, routed events, properties/bindings, XAML, notifications, both trees, rendering/composition and animation. A hook match does not prove execution: inspect the manifest together with the workload capture. Managed rendering/compositor spans measure elapsed managed execution (including waits), **not GPU time**.
 
-Snapshots are weakly consistent checkpoints, not a stop-the-world heap image. SnapshotDiffer keeps visual/logical/templated-parent changes separate and treats absence in truncated snapshots as unknown. The wire codec delta-encodes event fields inside independently decodable batches; snapshots are full checkpoints, **not an inter-packet tree-delta protocol**. Findings distinguish recorded relationships from inferred symptoms.
+Snapshots are weakly consistent checkpoints, not a stop-the-world heap image. SnapshotDiffer keeps visual/logical/templated-parent changes separate and treats absence in truncated snapshots as unknown. The wire codec delta-encodes event fields inside independently decodable batches; reliable connections negotiate baseline-hashed snapshot deltas with independent per-connection checkpoints and legacy full-frame fallback. UDP event batches remain stateless. See [stateful transport](docs/STATEFUL-PROTOCOL.md). Findings distinguish recorded relationships from inferred symptoms.
 
-Not yet provided: arbitrary-process CLR profiler/ReJIT attachment, exhaustive asynchronous causality, XAML source-map navigation, heap leak proof, GPU counters, or complete per-version subsystem semantic inspectors.
+Not yet provided: arbitrary-process CLR profiler/ReJIT attachment, exhaustive causality through custom/unsafe schedulers, exact XAML element-to-IL source maps, heap leak proof, GPU counters, or complete per-version subsystem semantic inspectors.
 
 ## Publishing
 

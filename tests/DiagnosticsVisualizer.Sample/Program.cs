@@ -2,6 +2,9 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Animation;
+using Avalonia.Animation.Easings;
+using Avalonia.Styling;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Headless;
 using Avalonia.Interactivity;
@@ -47,7 +50,7 @@ public sealed partial class WorkloadWindow : Window
         AvaloniaXamlLoader.Load(this);
         DataContext = _model;
     }
-    public void Exercise()
+    public async void Exercise()
     {
         var button = this.FindControl<Button>("ActionButton")!;
         var panel = this.FindControl<WorkloadPanel>("Panel")!;
@@ -72,6 +75,31 @@ public sealed partial class WorkloadWindow : Window
         if (clicks != 24 || panel.DirectValue != 23 || _model.Items.Count != 4)
             throw new InvalidOperationException("Instrumentation changed application behavior.");
         Console.WriteLine("WORKLOAD_OK clicks=24 direct=23 items=4");
+        var animation = new Animation
+        {
+            Duration = TimeSpan.FromMilliseconds(80),
+            Children =
+            {
+                new KeyFrame { Cue = new Cue(0), Setters = { new Setter(Visual.OpacityProperty, 1d) } },
+                new KeyFrame { Cue = new Cue(1), Setters = { new Setter(Visual.OpacityProperty, .8d) } }
+            }
+        };
+        await animation.RunAsync(button);
+        await ExerciseAsync();
+    }
+    private async Task ExerciseAsync()
+    {
+        // Not data-bound: exercise a real background INPC chain without violating UI affinity.
+        var model = new WorkloadModel(); var notifications = 0;
+        model.PropertyChanged += (_, _) => notifications++;
+        await Task.Run(async () =>
+        {
+            await Task.Delay(10).ConfigureAwait(false);
+            model.Title = "Background continuation";
+        });
+        if (notifications != 1) throw new InvalidOperationException("Async instrumentation changed notification behavior.");
+        _model.Title = "Async completed";
+        Console.WriteLine("ASYNC_WORKLOAD_OK notifications=1");
     }
 }
 
