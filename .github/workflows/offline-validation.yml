@@ -30,15 +30,36 @@ jobs:
           for path in ['host', 'sdk/' + os.environ['SDK_VERSION'], 'sdk-manifests', 'metadata']:
               if (root / path).exists(): shutil.copytree(root / path, dest / path)
           for group in ['shared/Microsoft.NETCore.App', 'shared/Microsoft.AspNetCore.App', 'packs/Microsoft.NETCore.App.Ref', 'packs/Microsoft.AspNetCore.App.Ref', 'packs/Microsoft.NETCore.App.Host.linux-x64']:
-              for path in (root / group).glob('*'):
-                  if path.name.startswith(('8.', '10.')): shutil.copytree(path, dest / group / path.name)
-          # Copy packages only: no credentials, NuGet.Config, home directory or runner environment.
+              for major in ['8.', '10.']:
+                  candidates = sorted((p for p in (root / group).glob('*') if p.name.startswith(major)), key=lambda p: tuple(map(int, p.name.split('.'))))
+                  if candidates:
+                      path = candidates[-1]
+                      shutil.copytree(path, dest / group / path.name)
           shutil.copytree(pathlib.Path.home() / '.nuget/packages', kit / 'packages')
           PY
           tar -czf "$RUNNER_TEMP/validation-kit.tar.gz" -C "$KIT" .
+          split -b 250M "$RUNNER_TEMP/validation-kit.tar.gz" "$RUNNER_TEMP/validation-kit.part-"
       - uses: actions/upload-artifact@v4
         with:
-          name: offline-validation-kit
-          path: ${{ runner.temp }}/validation-kit.tar.gz
+          name: offline-kit-aa
+          path: ${{ runner.temp }}/validation-kit.part-aa
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: offline-kit-ab
+          path: ${{ runner.temp }}/validation-kit.part-ab
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: offline-kit-ac
+          path: ${{ runner.temp }}/validation-kit.part-ac
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: offline-kit-ad
+          path: ${{ runner.temp }}/validation-kit.part-ad
           retention-days: 1
           compression-level: 0
