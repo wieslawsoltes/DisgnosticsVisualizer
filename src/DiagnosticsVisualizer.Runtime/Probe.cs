@@ -7,7 +7,7 @@ using DiagnosticsVisualizer.Core;
 namespace DiagnosticsVisualizer.Runtime;
 
 /// <summary>Fail-contained injection ABI. No I/O or UI access on a producer thread.</summary>
-public static class Probe
+public static partial class Probe
 {
     private static CaptureSession? _current;
     [ThreadStatic] private static bool _insideProbe;
@@ -49,14 +49,22 @@ public static class Probe
             if (writer is null) { session.Drop(); return default; }
             if (++writer.Samples % session.Options.SampleEvery != 0) return default;
             var name = session.Intern(writer, site); var obj = session.GetObjectId(target); var relation = session.GetObjectId(related);
-            var id = writer.NextId(); var parent = writer.Parent; writer.Parent = id;
-            return new(session, writer, id, parent, Stopwatch.GetTimestamp(), obj, relation, name, subsystem);
+            var restoreParent = writer.Parent;
+            var parent = LogicalParent(session, writer);
+            var previousFlow = session.Options.FlowExecutionContext ? Ambient.Value : default;
+            var id = writer.NextId();
+            // Publish ambient state before the physical stack, so a failed AsyncLocal write
+            // cannot strand an unreturned scope on the producer's stack.
+            if (session.Options.FlowExecutionContext) Ambient.Value = new(session.Id, id);
+            writer.Parent = id;
+            return new(session, writer, id, parent, Stopwatch.GetTimestamp(), obj, relation, name,
+                subsystem, restoreParent, previousFlow);
         }
         catch { session.Fault(); return default; }
         finally { _insideProbe = false; }
     }
     internal static void Exit(CaptureSession session, CaptureWriter writer, long id, long parent,
-        long start, long obj, long related, int name, Subsystem subsystem)
+        long start, long obj, long related, int name, Subsystem subsystem, long restoreParent, TraceContext previousFlow)
     {
         if (_insideProbe) return;
         _insideProbe = true;
@@ -65,7 +73,8 @@ public static class Probe
             // Copied, doubly-disposed or out-of-order scopes must not corrupt the caller's parent stack.
             if (writer.ThreadId != Environment.CurrentManagedThreadId || writer.Parent != id)
             { session.Fault(); return; }
-            writer.Parent = parent;
+            if (session.Options.FlowExecutionContext) Ambient.Value = previousFlow;
+            writer.Parent = restoreParent;
             var e = new TraceEvent(id, parent, start, Math.Max(0, Stopwatch.GetTimestamp() - start),
                 obj, related, writer.ThreadId, name, subsystem);
             if (!ReferenceEquals(Current, session) || !writer.TryWrite(e)) session.Drop();
@@ -85,7 +94,7 @@ public static class Probe
         {
             var writer = session.Writer;
             if (writer is null) { session.Drop(); return; }
-            var e = new TraceEvent(writer.NextId(), writer.Parent, Stopwatch.GetTimestamp(), 0,
+            var e = new TraceEvent(writer.NextId(), LogicalParent(session, writer), Stopwatch.GetTimestamp(), 0,
                 session.GetObjectId(target), session.GetObjectId(related), writer.ThreadId,
                 session.Intern(writer, name), subsystem, kind, data0, data1);
             if (!writer.TryWrite(e)) session.Drop();
@@ -130,17 +139,18 @@ public readonly ref struct TraceScope
 {
     private readonly CaptureSession? _session;
     private readonly CaptureWriter? _writer;
-    private readonly long _id, _parent, _start, _object, _related;
+    private readonly long _id, _parent, _start, _object, _related, _restoreParent;
+    private readonly TraceContext _previousFlow;
     private readonly int _name;
     private readonly Subsystem _subsystem;
     internal TraceScope(CaptureSession session, CaptureWriter writer, long id, long parent,
-        long start, long obj, long related, int name, Subsystem subsystem)
-    { _session = session; _writer = writer; _id = id; _parent = parent; _start = start;
+        long start, long obj, long related, int name, Subsystem subsystem, long restoreParent, TraceContext previousFlow)
+    { _restoreParent = restoreParent; _previousFlow = previousFlow; _session = session; _writer = writer; _id = id; _parent = parent; _start = start;
       _object = obj; _related = related; _name = name; _subsystem = subsystem; }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Dispose()
     {
         if (_session is not null && _writer is not null)
-            Probe.Exit(_session, _writer, _id, _parent, _start, _object, _related, _name, _subsystem);
+            Probe.Exit(_session, _writer, _id, _parent, _start, _object, _related, _name, _subsystem, _restoreParent, _previousFlow);
     }
 }
