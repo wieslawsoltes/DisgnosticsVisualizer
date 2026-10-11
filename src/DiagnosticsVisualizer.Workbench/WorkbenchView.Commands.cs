@@ -107,7 +107,9 @@ public sealed partial class WorkbenchView
         };
         list.DoubleTapped += async (_, _) => await Execute();
         var panel = new Grid { RowDefinitions = new("Auto,*") }; panel.Children.Add(search); Grid.SetRow(list, 1); panel.Children.Add(list); Filter(); ShowCard(panel, 560);
-        Dispatcher.UIThread.Post(() => search.Focus());
+        // Focus immediately when attached; only defer until layout when the host requires it.
+        // The deferred callback must not steal focus after this palette has been closed.
+        if (!search.Focus()) Dispatcher.UIThread.Post(() => { if (search.IsEffectivelyVisible) search.Focus(); }, DispatcherPriority.Loaded);
     }
     private void ShowCard(Control content, double width)
     {

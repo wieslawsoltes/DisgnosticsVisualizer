@@ -3,6 +3,7 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using DiagnosticsVisualizer.Analysis;
 using DiagnosticsVisualizer.Core;
 
@@ -41,6 +42,7 @@ public sealed class SourceExplorer : UserControl
         root.Children.Add(_status); Grid.SetRow(_sites, 1); root.Children.Add(_sites);
         Grid.SetRow(toolbar, 2); root.Children.Add(toolbar); Grid.SetRow(_identity, 3); root.Children.Add(_identity);
         Grid.SetRow(_code, 4); root.Children.Add(_code); Content = root;
+        _sites.AttachedToVisualTree += (_, _) => RevealSite();
         _sites.SelectionChanged += (_, _) => { if (_sites.SelectedItem is SourceRow row) Select(row.Site); };
         _open.Click += async (_, _) =>
         {
@@ -72,12 +74,19 @@ public sealed class SourceExplorer : UserControl
         if (!ReferenceEquals(_trace, trace))
         {
             _trace = trace;
-            _rows = trace.SourceSites.OrderBy(p => p.Value.Assembly, StringComparer.Ordinal)
+            _rows = trace.SourceSites.OrderByDescending(p => p.Value.Line > 0).ThenBy(p => p.Value.Assembly, StringComparer.Ordinal)
                 .ThenBy(p => p.Value.Signature, StringComparer.Ordinal).Select(p => new SourceRow(p.Key, p.Value)).ToArray();
             _sites.ItemsSource = _rows;
         }
         _sites.SelectedItem = selected is { } e ? _rows.FirstOrDefault(r => r.SiteId == e.NameId) : null;
         Select(selected is { } ev ? trace.SourceSites.GetValueOrDefault(ev.NameId) : null);
+        RevealSite();
+    }
+
+    private void RevealSite()
+    {
+        if (_sites.SelectedItem is { } item)
+            Dispatcher.UIThread.Post(() => { if (ReferenceEquals(_sites.SelectedItem, item)) _sites.ScrollIntoView(item, null); }, DispatcherPriority.Loaded);
     }
 
     private void Select(SourceSite? site)
@@ -96,7 +105,9 @@ public sealed class SourceExplorer : UserControl
         var revision = _revision;
         var excerpt = await SourceExcerpt.ReadAsync(stream, site, cancellationToken);
         if (_revision != revision) return;
-        _code.Text = excerpt.Text; _code.SelectionStart = excerpt.SelectionStart; _code.SelectionEnd = excerpt.SelectionEnd;
+        _code.Text = excerpt.Text;
+        _code.Focus(); _code.CaretIndex = excerpt.SelectionEnd;
+        _code.SelectionStart = excerpt.SelectionStart; _code.SelectionEnd = excerpt.SelectionEnd;
         _status.Text = $"{site.Location} • {(excerpt.ChecksumVerified ? "PDB checksum verified" : "Unverified: the PDB supplied no checksum")} • source is local, read-only, and not included in exports.";
     }
 }

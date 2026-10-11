@@ -56,7 +56,7 @@ public static partial class Program
             ready = view is not null, events = model?.Trace?.Events.Length ?? 0,
             nodes = model?.Trace?.Snapshot.Nodes.Length ?? 0,
             findings = model?.Analysis?.Findings.Length ?? 0, visualCount = visuals.Length,
-            commandPaletteOpen = commandSearch is not null, commandQuery = commandSearch?.Text ?? "",
+            commandPaletteOpen = commandSearch is not null, commandInputFocused = commandSearch?.IsFocused == true, commandQuery = commandSearch?.Text ?? "",
             commandSelection = commandSelection ?? "", activeDocuments,
             causalGraphVisible = visuals.OfType<CausalityGraph>().Any(graph => graph.IsEffectivelyVisible),
             selectedEvent = model?.SelectedEventId.ToString() ?? "0", selectedObject = model?.SelectedObjectId.ToString() ?? "0",

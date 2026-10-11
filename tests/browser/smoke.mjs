@@ -25,7 +25,7 @@ try {
   const command = async text => {
     stage = `command: ${text}`;
     await page.keyboard.press('Control+Shift+P');
-    await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth().commandPaletteOpen);
+    await page.waitForFunction(() => { const h = globalThis.getDiagnosticsVisualizerHealth(); return h.commandPaletteOpen && h.commandInputFocused; });
     await page.keyboard.press('Control+A');
     await page.keyboard.type(text, { delay: 12 });
     await page.waitForFunction(text => globalThis.getDiagnosticsVisualizerHealth().commandQuery === text, text);
@@ -36,7 +36,7 @@ try {
   stage = 'open command palette';
   await page.mouse.click(650, 220);
   await page.keyboard.press('Control+Shift+P');
-  await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth().commandPaletteOpen, null, { timeout: 10_000 });
+  await page.waitForFunction(() => { const h = globalThis.getDiagnosticsVisualizerHealth(); return h.commandPaletteOpen && h.commandInputFocused; }, null, { timeout: 10_000 });
   await page.screenshot({ path: 'artifacts/browser/commands.png', fullPage: true });
   stage = 'filter command palette through real keyboard input';
   await page.keyboard.type('Show Causal chain', { delay: 30 });
@@ -94,7 +94,7 @@ try {
   // Reload resets the browser's active element; acquire workspace focus as at startup.
   await page.mouse.click(650, 220);
   await page.keyboard.press('Control+Shift+P');
-  await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth().commandPaletteOpen);
+  await page.waitForFunction(() => { const h = globalThis.getDiagnosticsVisualizerHealth(); return h.commandPaletteOpen && h.commandInputFocused; });
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => !globalThis.getDiagnosticsVisualizerHealth().commandPaletteOpen);
   await page.setViewportSize({ width: 1100, height: 760 });
