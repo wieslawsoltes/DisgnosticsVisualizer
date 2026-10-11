@@ -52,6 +52,10 @@ public sealed partial class WorkbenchView : UserControl, IDisposable
     private readonly List<(string Name, string Shortcut, Func<Task> Run)> _commands = [];
     private bool _updating, _disposed;
     private readonly SourceExplorer _sources = new();
+    private readonly AsyncOperationsControl _asyncOperations = new();
+    private readonly DependencyExplorer _dependencies = new();
+    public void ShowDependencies() => _factory.Activate("dependencies");
+    public void ShowAsyncOperations() => _factory.Activate("async");
     public void ShowSources() => _factory.Activate("sources");
     public WorkbenchModel Model => _model;
     public WorkbenchView() : this(new WorkbenchModel()) { }
@@ -73,7 +77,7 @@ public sealed partial class WorkbenchView : UserControl, IDisposable
             ["timeline"] = ChartPanel(_timeline, _timeline.Fit), ["flame"] = ChartPanel(_flame, _flame.Fit),
             ["causality"] = ChartPanel(_causal, _causal.Fit), ["systems"] = new ScrollViewer { Content = _systems },
             ["comparison"] = ComparisonPanel(), ["visual"] = TreePanel(_visual), ["logical"] = TreePanel(_logical),
-            ["sources"] = _sources, ["properties"] = _properties, ["details"] = _details, ["events"] = EventPanel(),
+            ["dependencies"] = _dependencies, ["async"] = _asyncOperations, ["sources"] = _sources, ["properties"] = _properties, ["details"] = _details, ["events"] = EventPanel(),
             ["findings"] = _findings, ["costs"] = CostPanel(),
             ["topdown"] = _topDown, ["bottomup"] = _bottomUp, ["statistics"] = _statistics, ["threads"] = _threads,
             ["scene"] = _scene, ["history"] = HistoryPanel(), ["bookmarks"] = _bookmarks,
@@ -89,7 +93,12 @@ public sealed partial class WorkbenchView : UserControl, IDisposable
         WireSelection(); RegisterCommands(); RegisterProfilingCommands();
         _commands.Add(("Show Sources", "F12", () => { _factory.Activate("sources"); return Task.CompletedTask; }));
         _details.SourceRequested += () => _factory.Activate("sources");
-        InitializeProfiling();
+        _commands.Add(("Show Async operations", "", () => { _factory.Activate("async"); return Task.CompletedTask; }));
+        _commands.Add(("Show Dependencies", "", () => { ShowDependencies(); return Task.CompletedTask; }));
+        _dependencies.ObjectSelected += id => _model.SelectObject(id, false);
+        _asyncOperations.EventSelected += id => _model.SelectEvent(id, false);
+        _asyncOperations.RangeRequested += async range => await RunAsync(() => _model.SetRangeAsync(range));
+        InitializeProfiling(); BindPanelRails();
         _model.TraceUpdated += OnTraceUpdated; _model.SelectionChanged += OnSelectionChanged; _model.PropertyChanged += ModelChanged;
         _model.ComparisonUpdated += OnComparisonUpdated;
         _filterTimer.Tick += (_, _) => { _filterTimer.Stop(); RefreshEventRows(); };
@@ -123,6 +132,7 @@ public sealed partial class WorkbenchView : UserControl, IDisposable
         {
             _timeline.Trace = trace; _flame.Trace = trace; _causal.SetTrace(trace, analysis, _model.SelectedEventId); _systems.SetTrace(trace, analysis);
             _visual.SetSnapshot(trace.Snapshot); _logical.SetSnapshot(trace.Snapshot); _costChart.Rows = analysis.Costs;
+            _asyncOperations.SetOperations(analysis.AsyncOperations, trace);
             _costs.ItemsSource = analysis.Costs; _findings.ItemsSource = analysis.Findings;
             _count.Text = trace.Events.Length.ToString("N0");
             _duration.Text = trace.Events.Length == 0 ? "0 s" : $"{trace.Milliseconds(trace.Events.Max(e => e.End) - trace.Events.Min(e => e.Timestamp)) / 1000:F2} s";
@@ -142,6 +152,7 @@ public sealed partial class WorkbenchView : UserControl, IDisposable
         _visual.SelectObject(objectId, focus); _logical.SelectObject(objectId, focus);
         _properties.Inspect(_historicalSnapshot is null ? trace : trace with { Snapshot = _historicalSnapshot }, objectId); _details.Inspect(trace, selected);
         _scene.SetSnapshot(_historicalSnapshot ?? trace.Snapshot, objectId);
+        _dependencies.Inspect(trace, objectId, _historicalSnapshot);
         _sources.Inspect(trace, selected);
         if (selected is { } e)
         {
@@ -172,7 +183,7 @@ public sealed partial class WorkbenchView : UserControl, IDisposable
     }
     public void Dispose()
     {
-        if (_disposed) return; SaveWorkspace(); _disposed = true; _filterTimer.Stop(); _workspaceTimer.Stop();
+        if (_disposed) return; UnbindPanelRails(); SaveWorkspace(); _disposed = true; _filterTimer.Stop(); _workspaceTimer.Stop();
         _model.ProfileUpdated -= ProfileChanged; _model.BookmarksUpdated -= BookmarksChanged;
         _model.TraceUpdated -= OnTraceUpdated; _model.SelectionChanged -= OnSelectionChanged; _model.PropertyChanged -= ModelChanged; _model.ComparisonUpdated -= OnComparisonUpdated;
         _ = _model.DisposeAsync();

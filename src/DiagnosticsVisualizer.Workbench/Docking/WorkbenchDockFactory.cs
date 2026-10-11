@@ -26,13 +26,13 @@ public sealed class WorkbenchDockFactory(IReadOnlyDictionary<string, Control> vi
         {
             var title = id switch
             {
-                "sources" => "Sources", "timeline" => "Timeline", "flame" => "Flame chart", "causality" => "Causal chain", "systems" => "Subsystems",
+                "dependencies" => "Dependencies", "async" => "Async operations", "sources" => "Sources", "timeline" => "Timeline", "flame" => "Flame chart", "causality" => "Causal chain", "systems" => "Subsystems",
                 "comparison" => "Compare", "visual" => "Visual tree", "logical" => "Logical tree", "properties" => "Properties & resources",
                 "details" => "Event details", "events" => "Event log", "findings" => "Findings", "costs" => "Hot paths",
                 "topdown" => "Call tree", "bottomup" => "Bottom-up", "statistics" => "Statistics", "threads" => "Thread activity",
                 "scene" => "Layout scene", "history" => "Snapshot history", "bookmarks" => "Bookmarks", "health" => "Capture health", _ => id
             };
-            IDockable panel = id is "sources" or "timeline" or "flame" or "causality" or "systems" or "comparison" or "topdown" or "bottomup" or "statistics" or "scene" or "history"
+            IDockable panel = id is "dependencies" or "async" or "sources" or "timeline" or "flame" or "causality" or "systems" or "comparison" or "topdown" or "bottomup" or "statistics" or "scene" or "history"
                 ? new PanelDocument { Id = id, Title = title, View = view, CanClose = false, CanFloat = true }
                 : new PanelTool { Id = id, Title = title, View = view, CanClose = false, CanFloat = true, CanPin = true };
             _panels[id] = panel;
@@ -45,7 +45,7 @@ public sealed class WorkbenchDockFactory(IReadOnlyDictionary<string, Control> vi
         var documents = new DocumentDock { Id = "documents", IsCollapsable = false, Proportion = .73, CanCreateDocument = false,
             VisibleDockables = preset switch
             {
-                WorkspacePreset.Profile => Panels("flame", "topdown", "bottomup", "statistics"),
+                WorkspacePreset.Profile => Panels("flame", "topdown", "bottomup", "statistics", "async"),
                 WorkspacePreset.Compare => Panels("comparison", "timeline"),
                 _ => Panels("timeline", "scene", "causality")
             } };

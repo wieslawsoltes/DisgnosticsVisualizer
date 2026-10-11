@@ -17,7 +17,7 @@ using DiagnosticsVisualizer.Runtime;
 namespace DiagnosticsVisualizer.Agent.Avalonia;
 
 /// <summary>Weak-reference observation and time-sliced UI-thread checkpoints using Avalonia diagnostic APIs.</summary>
-public sealed class AvaloniaInspector : IDisposable
+public sealed partial class AvaloniaInspector : IDisposable
 {
     private sealed class SnapshotWork(long selected)
     {
@@ -128,7 +128,7 @@ public sealed class AvaloniaInspector : IDisposable
             var properties = InspectProperties(selected, work.Relations);
             var relations = work.Relations.Take(TraceLimits.MaxRelationsPerSnapshot).ToArray();
             _session.SetSnapshot(new(work.Nodes.ToArray(), properties, relations, selected,
-                work.Truncated || relations.Length != work.Relations.Count));
+                work.Truncated || relations.Length != work.Relations.Count || properties.Any(p => p.Kind == "Inspection limit")));
         }
         catch (Exception error) { work.Pending.Clear(); Report(error); }
         finally { if (work.Pending.Count == 0) Volatile.Write(ref _pending, 0); }
@@ -174,12 +174,7 @@ public sealed class AvaloniaInspector : IDisposable
         catch (Exception error) { properties.Add(new(id, "Style provenance", "Capability", "Unavailable", "", error.GetType().Name)); }
         if (value is StyledElement styled)
         {
-            foreach (var resource in styled.Resources.Take(256))
-            {
-                var key = resource.Key is string text ? ValueRedactor.Limit(text, 256) : $"<{resource.Key.GetType().Name}>";
-                properties.Add(new(id, key, "Local resource", _redactor.Format(key, resource.Value), "Resource dictionary", styled.GetType().Name));
-                if (resource.Value is { } resourceValue) relations?.Add(new(id, _session.GetObjectId(resourceValue), "Resource", key));
-            }
+            InspectResourceCandidates(styled, id, properties, relations);
             foreach (var style in styled.Styles.Take(128))
                 relations?.Add(new(id, _session.GetObjectId(style), "Style", style is Style s ? ValueRedactor.Limit(s.Selector?.ToString() ?? "Style") : style.GetType().Name));
         }

@@ -47,7 +47,7 @@ public sealed partial class WorkbenchView
             foreach (var window in _layout.Windows?.ToArray() ?? []) window.Exit();
             _dock.Layout = null;
             _layout = WorkspaceLayout.Restore(state, _factory); _preset = state.Preset;
-            _factory.InitLayout(_layout); _dock.Layout = _layout; _presetPicker.SelectedItem = _preset; WorkspaceError = null;
+            _factory.InitLayout(_layout); _dock.Layout = _layout; _presetPicker.SelectedItem = _preset; WorkspaceError = null; BindPanelRails();
         }
         finally { _workspaceRestoring = false; }
     }
@@ -55,7 +55,7 @@ public sealed partial class WorkbenchView
     {
         foreach (var window in _layout.Windows?.ToArray() ?? []) window.Exit();
         _dock.Layout = null; _preset = preset; _layout = _factory.CreateLayout(preset); _factory.InitLayout(_layout); _dock.Layout = _layout; _presetPicker.SelectedItem = _preset;
-        SaveWorkspace();
+        BindPanelRails(); SaveWorkspace();
     }
     public void SaveWorkspace()
     {
@@ -110,11 +110,13 @@ public sealed partial class WorkbenchView
         foreach (var (id, title, path) in new[] {
             ("visual", "Visual tree", "M2 2H6V6H2ZM10 10H14V14H10ZM4 6V12H10M10 2H14V6H10Z"),
             ("logical", "Logical tree", "M2 2H6V6H2ZM10 6H14V10H10ZM2 10H6V14H2ZM6 4H8V8H10M4 6V10"),
+            ("dependencies", "Object dependencies", "M1 6H5V10H1ZM11 1H15V5H11ZM11 11H15V15H11ZM5 8H8V3H11M8 8V13H11"),
             ("scene", "Layout scene", "M1 1H15V15H1ZM4 4H9V8H4ZM7 10H12V13H7Z"),
             ("history", "Snapshot history", "M2 7A6 6 0 1 1 3 12M2 2V7H7M8 4V8L11 10"),
             ("health", "Capture health", "M1 8H4L6 3L9 13L11 8H15") }) left.Children.Add(PanelButton(id, title, path));
         foreach (var (id, title, path) in new[] {
             ("properties", "Properties and resources", "M2 3H14M2 8H14M2 13H14M5 1V5M11 6V10M6 11V15"),
+            ("async", "Async operations", "M1 8H4L6 3L10 13L12 8H15M3 2V5M13 11V14"),
             ("sources", "Sources (F12)", "M5 2L1 8L5 14M11 2L15 8L11 14M9 1L7 15"),
             ("details", "Event details", "M8 2A6 6 0 1 0 8 14A6 6 0 1 0 8 2ZM8 7V11M8 4V5"),
             ("bookmarks", "Bookmarks", "M4 1H12V15L8 11L4 15Z"),
@@ -128,6 +130,7 @@ public sealed partial class WorkbenchView
         var button = new Button { Width = 30, Height = 30, Padding = new(6), Background = Brushes.Transparent, BorderThickness = new(0),
             Content = new Avalonia.Controls.Shapes.Path { Data = Geometry.Parse(path), Stroke = ChartPalette.Muted, StrokeThickness = 1.2, Stretch = Stretch.Uniform } };
         Avalonia.Automation.AutomationProperties.SetName(button, title); ToolTip.SetTip(button, title);
+        _panelButtons[id] = button;
         button.Click += (_, _) => _factory.Activate(id); return button;
     }
     private Control RangeBar()
@@ -160,6 +163,7 @@ public sealed partial class WorkbenchView
         var snapshot = _historicalSnapshot ?? trace.Snapshot;
         _visual.SetSnapshot(snapshot); _logical.SetSnapshot(snapshot); _scene.SetSnapshot(snapshot, _model.SelectedObjectId);
         _properties.Inspect(trace with { Snapshot = snapshot }, _model.SelectedObjectId);
+        _dependencies.Inspect(trace, _model.SelectedObjectId, snapshot);
         if (index <= 0) { _changes.ItemsSource = Array.Empty<SnapshotChangeRow>(); return; }
         var difference = SnapshotDiffer.Compare(trace.SessionId, trace.Checkpoints[index - 1].Data, trace.SessionId, snapshot);
         _changes.ItemsSource = difference.Nodes.Select(n => new SnapshotChangeRow(n.ObjectId, n.Kind.ToString(), NodeLabel(n.Before), NodeLabel(n.After)))
@@ -183,6 +187,7 @@ public sealed partial class WorkbenchView
     }
     private void RegisterProfilingCommands()
     {
+        _commands.Add(("Toggle focus workspace", "Ctrl+Shift+F", () => { ToggleFocusMode(); return Task.CompletedTask; }));
         _commands.Add(("Bookmark selected event", "Ctrl+B", () => { _model.AddBookmark(); return Task.CompletedTask; }));
         _commands.Add(("Clear analysis range", "", () => _model.SetRangeAsync(null)));
         _commands.Add(("Save workspace layout", "", () => { SaveWorkspace(); return Task.CompletedTask; }));
