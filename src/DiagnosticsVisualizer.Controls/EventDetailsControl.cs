@@ -13,6 +13,8 @@ public sealed class EventDetailsControl : UserControl
     private readonly TextBlock _title = new() { Text = "Select an event", FontSize = 13, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap, Margin = new(14) };
     private readonly DataGrid _grid = DiagnosticGrid.Create(("Field", "Field", 130), ("Value", "Value", -1));
     private TraceEvent? _event;
+    private readonly Button _source = new() { Content = "Source", FontSize = 11, IsEnabled = false };
+    public event Action? SourceRequested;
     public event Action<long>? ParentRequested;
     public event Action<long>? ObjectRequested;
     public EventDetailsControl()
@@ -21,12 +23,14 @@ public sealed class EventDetailsControl : UserControl
         var actions = new StackPanel { Orientation = global::Avalonia.Layout.Orientation.Horizontal, Spacing = 6, Margin = new(12, 0, 12, 10) };
         var parent = new Button { Content = "Go to parent", FontSize = 11 }; parent.Click += (_, _) => { if (_event is { ParentId: not 0 } e) ParentRequested?.Invoke(e.ParentId); };
         var obj = new Button { Content = "Inspect object", FontSize = 11 }; obj.Click += (_, _) => { if (_event is { ObjectId: not 0 } e) ObjectRequested?.Invoke(e.ObjectId); };
-        actions.Children.Add(parent); actions.Children.Add(obj); Grid.SetRow(actions, 1); Grid.SetRow(_grid, 2);
+        _source.Click += (_, _) => SourceRequested?.Invoke();
+        actions.Children.Add(_source); actions.Children.Add(parent); actions.Children.Add(obj); Grid.SetRow(actions, 1); Grid.SetRow(_grid, 2);
         root.Children.Add(_title); root.Children.Add(actions); root.Children.Add(_grid); Content = root;
     }
     public void Inspect(TraceView trace, TraceEvent? selected)
     {
         _event = selected;
+        _source.IsEnabled = selected is { } sourceEvent && trace.SourceSites.ContainsKey(sourceEvent.NameId);
         if (selected is not { } e) { _title.Text = "Select an event"; _grid.ItemsSource = Array.Empty<DetailRow>(); return; }
         _title.Text = trace.Name(e);
         _grid.ItemsSource = new[]

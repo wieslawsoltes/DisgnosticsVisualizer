@@ -52,6 +52,12 @@ try {
     return health.causalGraphVisible && !health.commandPaletteOpen && health.activeDocuments.includes('causality');
   }, null, { timeout: 10_000 });
   await page.screenshot({ path: 'artifacts/browser/causality.png', fullPage: true });
+  await command('Show Sources');
+  await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth().activeDocuments.includes('sources'));
+  await page.screenshot({ path: 'artifacts/browser/sources.png', fullPage: true });
+  await command('Show Timeline');
+  await page.keyboard.press('F12');
+  await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth().activeDocuments.includes('sources'));
   await command('Show Statistics');
   await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth().statisticsVisible);
   stage = 'select analysis range through real pointer input';
@@ -96,7 +102,7 @@ try {
   await page.screenshot({ path: 'artifacts/browser/compact.png', fullPage: true });
   const finalHealth = await page.evaluate(() => globalThis.getDiagnosticsVisualizerHealth());
   assert.equal(finalHealth.error, '');
-  await writeFile('artifacts/browser/health.json', JSON.stringify({ initial: health, final: finalHealth, keyboardCommands: true, riderPreset: true, pointerRange: true, persistedWorkspace: true }, null, 2));
+  await writeFile('artifacts/browser/health.json', JSON.stringify({ initial: health, final: finalHealth, keyboardCommands: true, riderPreset: true, pointerRange: true, persistedWorkspace: true, sourceNavigation: true }, null, 2));
   assert.deepEqual(errors, [], 'Browser errors or missing assets were detected.');
   console.log(JSON.stringify({ status: 'passed', ...finalHealth }));
 } catch (error) {

@@ -129,6 +129,7 @@ public sealed partial class WorkbenchView
             else if (e.Key == Key.S) { e.Handled = true; await RunAsync(() => SaveAsync(false)); }
             else if (e.Key == Key.L) { e.Handled = true; ShowConnection(); }
         }
+        else if (e.Key == Key.F12) { e.Handled = true; _factory.Activate("sources"); }
         else if (e.Key == Key.F8) { e.Handled = true; await RunAsync(_model.ToggleRecordingAsync); }
         else if (e.Key == Key.F && e.Source is not TextBox) { _timeline.Fit(); _flame.Fit(); e.Handled = true; }
     }
