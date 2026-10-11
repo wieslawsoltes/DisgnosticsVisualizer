@@ -9,6 +9,7 @@ public sealed record CostRow(string Name, Subsystem Subsystem, int Count, double
 public sealed record CausalEdge(long Source, long Target, string Kind, bool Inferred = false);
 public sealed record AnalysisResult(CostRow[] Costs, Finding[] Findings, CausalEdge[] Edges)
 {
+    public DispatcherOperation[] DispatcherOperations { get; init; } = [];
     public AsyncOperation[] AsyncOperations { get; init; } = [];
 }
 
@@ -27,7 +28,7 @@ public static class TraceAnalyzer
             {
                 if (!children.TryGetValue(e.ParentId, out var list)) children[e.ParentId] = list = [];
                 list.Add(e);
-                var kind = AsyncOperationEvent.IsBegin(parent) && AsyncOperationEvent.IsEnd(e) ? "async completion" : parent.ThreadId != e.ThreadId ? "cross-thread causal parent" :
+                var kind = DispatcherEvent.IsMarker(e) ? "dispatcher lifecycle" : DispatcherEvent.IsMarker(parent) && parent.Data0 == DispatcherEvent.StartedCode ? "dispatcher callback" : AsyncOperationEvent.IsBegin(parent) && AsyncOperationEvent.IsEnd(e) ? "async completion" : parent.ThreadId != e.ThreadId ? "cross-thread causal parent" :
                     e.Timestamp < parent.Timestamp || e.End > parent.End ? "continuation parent" : "synchronous parent";
                 edges.Add(new(e.ParentId, e.Id, kind));
             }
@@ -64,25 +65,29 @@ public static class TraceAnalyzer
                 $"{count} recorded operations for object #{first.ObjectId} in a {frameBudgetMs:F2} ms bucket. Inspect invalidation and parent spans before attributing a cause.",
                 first.Id, first.ObjectId, true));
         }
+        var dispatcher = global::DiagnosticsVisualizer.Analysis.DispatcherOperations.Analyze(trace);
+        foreach (var operation in dispatcher.Where(o => o.Started is not null && o.RunnableQueueMs > frameBudgetMs))
+            findings.Add(new("Warning", "Measured dispatcher queue delay",
+                $"Operation #{operation.ObjectId} waited {operation.RunnableQueueMs:F2} ms at runnable priority ({operation.QueueMs:F2} ms total residency); posted priority {operation.PostedPriority}, execution priority {operation.ExecutionPriority}. This is latency, not CPU time.", operation.EventId, operation.ObjectId));
         var queued = new Dictionary<long, TraceEvent>();
-        foreach (var e in trace.Events.Where(e => e.Subsystem == Subsystem.Dispatcher))
+        foreach (var e in trace.Events.Where(e => dispatcher.Length == 0 && e.Subsystem == Subsystem.Dispatcher))
         {
             var name = trace.Name(e);
             if (e.RelatedId != 0 && (name.Contains("Enqueue", StringComparison.Ordinal) || name.Contains("AddToQueue", StringComparison.Ordinal)))
                 queued[e.RelatedId] = e;
             if (e.ObjectId != 0 && name.Contains("Invoke", StringComparison.Ordinal) && queued.Remove(e.ObjectId, out var producer) && producer.Timestamp <= e.Timestamp)
             {
-                edges.Add(new(producer.Id, e.Id, "dispatcher operation identity"));
+                edges.Add(new(producer.Id, e.Id, "inferred dispatcher operation identity", true));
                 var delay = trace.Milliseconds(Math.Max(0, e.Timestamp - producer.End));
                 if (delay > frameBudgetMs) findings.Add(new("Warning", "Dispatcher queue delay",
-                    $"Operation #{e.ObjectId} waited approximately {delay:F2} ms after enqueue returned.", e.Id, e.ObjectId));
+                    $"Operation #{e.ObjectId} waited approximately {delay:F2} ms after enqueue returned.", e.Id, e.ObjectId, true));
             }
         }
         if (trace.DroppedEvents + trace.MissingBlocks + trace.MetadataDrops > 0)
             findings.Insert(0, new("Warning", "Capture is incomplete",
                 $"{trace.DroppedEvents} dropped events, {trace.MissingBlocks} missing batches, {trace.MetadataDrops} metadata drops. Absence of an event is not evidence it did not happen.", 0, 0));
         if (trace.ProbeFaults > 0) findings.Insert(0, new("Error", "Instrumentation faults", $"{trace.ProbeFaults} probe faults were contained. Review the weaving manifest and compatibility report.", 0, 0));
-        return new(costs, findings.Take(2000).ToArray(), edges.ToArray()) { AsyncOperations = global::DiagnosticsVisualizer.Analysis.AsyncOperations.Analyze(trace) };
+        return new(costs, findings.Take(2000).ToArray(), edges.ToArray()) { DispatcherOperations = dispatcher, AsyncOperations = global::DiagnosticsVisualizer.Analysis.AsyncOperations.Analyze(trace) };
     }
     private static long CoveredDuration(TraceEvent parent, List<TraceEvent>? children)
     {

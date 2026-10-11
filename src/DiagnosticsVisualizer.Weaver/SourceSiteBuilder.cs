@@ -17,6 +17,11 @@ internal static class SourceSiteBuilder
         if (asyncType?.Resolve()?.Methods.FirstOrDefault(m => m.Name == "MoveNext") is { } move && points.Count == 0)
             points = move.DebugInformation.SequencePoints;
         var point = points.FirstOrDefault(p => !p.IsHidden && p.StartLine > 0);
+        return CreatePoint(module, method, point, asyncType is not null);
+    }
+
+    public static SourceSite CreatePoint(ModuleDefinition module, MethodDefinition method, SequencePoint? point, bool asyncKickoff = false)
+    {
         var document = point?.Document;
         var algorithm = document?.HashAlgorithm switch { DocumentHashAlgorithm.SHA1 => "SHA1", DocumentHashAlgorithm.SHA256 => "SHA256", _ => "" };
         var checksum = algorithm.Length == 0 ? "" : Convert.ToHexString(document!.Hash);
@@ -25,7 +30,7 @@ internal static class SourceSiteBuilder
         var name = document?.Url.Replace('\\', '/').Split('/').LastOrDefault() ?? "";
         return new(module.Assembly.Name.Name, module.Mvid, method.MetadataToken.ToInt32(), method.FullName,
             name, point?.StartLine ?? 0, point?.StartColumn ?? 0, point?.EndLine ?? 0, point?.EndColumn ?? 0,
-            algorithm, checksum, SourceLink(module, document?.Url), asyncType is not null);
+            algorithm, checksum, SourceLink(module, document?.Url), asyncKickoff);
     }
 
     private static string SourceLink(ModuleDefinition module, string? document)

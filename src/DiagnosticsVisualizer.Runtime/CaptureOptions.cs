@@ -14,6 +14,8 @@ public sealed record CaptureOptions
     public bool TrackAsyncOperations { get; init; }
     /// <summary>Opt-in object-to-XAML construction/population observations from portable PDBs.</summary>
     public bool TrackXamlObjects { get; init; }
+    /// <summary>Opt-in admitted-queue/callback/abort markers with weak work-item state.</summary>
+    public bool TrackDispatcherOperations { get; init; }
     public int SampleEvery { get; init; } = 1;
     public ulong SubsystemMask { get; init; } = ulong.MaxValue;
     /// <summary>Parse bounded startup settings once, never on a producer's hot path.</summary>
@@ -54,7 +56,8 @@ public sealed record CaptureOptions
             SubsystemMask = mask,
             FlowExecutionContext = Boolean("AVTRACE_FLOW_EXECUTION_CONTEXT"),
             TrackAsyncOperations = Boolean("AVTRACE_ASYNC_OPERATIONS"),
-            TrackXamlObjects = Boolean("AVTRACE_XAML_OBJECTS")
+            TrackXamlObjects = Boolean("AVTRACE_XAML_OBJECTS"),
+            TrackDispatcherOperations = Boolean("AVTRACE_DISPATCHER_OPERATIONS")
         };
         options.Validate(); return options;
     }

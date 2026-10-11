@@ -59,6 +59,9 @@ public static class WeaveEngine
                 }
                 var module = assembly.MainModule; var originalMvid = module.Mvid.ToString();
                 var signed = assembly.Name.HasPublicKey; var methodReports = new List<MethodReport>();
+                if (options.Deep)
+                    foreach (var method in AllTypes(module.Types).SelectMany(t => t.Methods).ToArray())
+                        methodReports.AddRange(XamlSourceRewriter.Instrument(module, method));
                 // Capture identities before any kickoff body or generated MoveNext is rewritten.
                 foreach (var kickoff in AllTypes(module.Types).SelectMany(t => t.Methods).ToArray())
                     if (HookCatalog.Match(kickoff, options.Deep) is { } subsystem &&
@@ -78,6 +81,7 @@ public static class WeaveEngine
                     methodReports.Add(new(method.MetadataToken.ToInt32(), method.FullName, category.ToString()!,
                         reason is null ? "Instrumented" : notifications > 0 ? "NotificationsOnly" : "Skipped", notifications, reason, sourceSite));
                 }
+                methodReports.AddRange(DispatcherRewriter.Instrument(module));
                 var bootstrapped = options.Bootstrap && module.EntryPoint is not null && TryBootstrap(module, directory, resolver);
                 var changed = bootstrapped || methodReports.Any(r => r.Status != "Skipped");
                 var originalHash = Hash(path);
