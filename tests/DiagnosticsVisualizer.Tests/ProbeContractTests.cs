@@ -14,7 +14,9 @@ public sealed class ProbeContractTests
         for (var i = 0; i < 256; i++) { using var scope = Probe.Enter(0, "hot", target); }
         var start = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 10000; i++) { using var scope = Probe.Enter(0, "hot", target); }
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - start);
+        // Evaluate before entering xUnit generic assertion helpers (which may initialize lazily).
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - start;
+        Assert.Equal(0, allocated);
         Assert.Equal(0, session.ProbeFaults);
         Assert.Equal(0, session.DroppedEvents);
     }

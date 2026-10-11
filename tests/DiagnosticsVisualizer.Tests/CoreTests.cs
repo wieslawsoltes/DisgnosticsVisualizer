@@ -59,7 +59,9 @@ public sealed class CoreTests
         for (var i = 0; i < 100; i++) { using var scope = Probe.Enter(0, "test", null); }
         var before = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 100_000; i++) { using var scope = Probe.Enter(0, "test", null); }
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        // Evaluate before entering xUnit generic assertion helpers (which may initialize lazily).
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.Equal(0, allocated);
     }
     [Fact] public void NestedScopesHaveCausalParents()
     {
