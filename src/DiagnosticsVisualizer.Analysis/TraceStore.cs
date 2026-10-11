@@ -10,6 +10,7 @@ public sealed record TraceView(Guid SessionId, long Frequency, long OriginTimest
     long DroppedEvents, long MissingBlocks, long ProbeFaults, long MetadataDrops,
     long EvictedEvents, bool Recording)
 {
+    public IReadOnlyDictionary<int, SourceSite> SourceSites { get; init; } = new Dictionary<int, SourceSite>();
     public SnapshotCheckpoint[] Checkpoints { get; init; } = [];
     public string Name(in TraceEvent e) => Symbols.TryGetValue(e.NameId, out var name) ? name : $"site #{e.NameId}";
     public double Milliseconds(long ticks) => ticks * (1000d / Frequency);
@@ -22,7 +23,8 @@ public sealed class TraceStore(int maxEvents = 2_000_000)
     private readonly Queue<TraceEvent[]> _chunks = new();
     private readonly HashSet<long> _ids = [];
     private readonly SortedSet<long> _sequences = [];
-    private readonly Dictionary<int, string> _symbols = [];
+    private readonly Dictionary<int, string> _symbols = [], _displaySymbols = [];
+    private readonly Dictionary<int, SourceSite> _sourceSites = [];
     private readonly Dictionary<long, ObjectInfo> _objects = [];
     private Guid _session;
     private long _frequency = 10_000_000, _origin, _drops, _faults, _metadataDrops, _evicted, _highestSequence;
@@ -49,7 +51,13 @@ public sealed class TraceStore(int maxEvents = 2_000_000)
             foreach (var s in block.Symbols)
             {
                 if (_symbols.TryGetValue(s.Id, out var old) && old != s.Name) throw new InvalidDataException("Symbol identity collision.");
-                if (_symbols.Count < 1_000_000) _symbols[s.Id] = s.Name;
+                if (!_symbols.ContainsKey(s.Id) && _symbols.Count < 1_000_000)
+                {
+                    _symbols[s.Id] = s.Name;
+                    if (SourceSiteSymbol.TryDecode(s.Name, out var site))
+                    { _sourceSites[s.Id] = site!; _displaySymbols[s.Id] = site!.Signature; }
+                    else _displaySymbols[s.Id] = s.Name;
+                }
             }
             foreach (var o in block.Objects) if (_objects.Count < 1_000_000) _objects[o.Id] = o;
             var accepted = block.Events.Where(e => _ids.Add(e.Id)).ToArray();
@@ -78,9 +86,9 @@ public sealed class TraceStore(int maxEvents = 2_000_000)
         {
             var events = _chunks.SelectMany(chunk => chunk).OrderBy(e => e.Timestamp).ThenBy(e => e.Id).ToArray();
             var missing = _sequences.Count == 0 ? 0 : Math.Max(0, _highestSequence - _sequences.Min + 1 - _sequences.Count);
-            return new(_session, _frequency, _origin, events, new Dictionary<int, string>(_symbols),
+            return new(_session, _frequency, _origin, events, new Dictionary<int, string>(_displaySymbols),
                 new Dictionary<long, ObjectInfo>(_objects), _snapshot, _drops, missing, _faults,
-                _metadataDrops, _evicted, _recording) { Checkpoints = _checkpoints.ToArray() };
+                _metadataDrops, _evicted, _recording) { Checkpoints = _checkpoints.ToArray(), SourceSites = new Dictionary<int, SourceSite>(_sourceSites) };
         }
     }
 }

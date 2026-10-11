@@ -25,7 +25,7 @@ try {
   const command = async text => {
     stage = `command: ${text}`;
     await page.keyboard.press('Control+Shift+P');
-    await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth().commandPaletteOpen);
+    await page.waitForFunction(() => { const h = globalThis.getDiagnosticsVisualizerHealth(); return h.commandPaletteOpen && h.commandInputFocused; });
     await page.keyboard.press('Control+A');
     await page.keyboard.type(text, { delay: 12 });
     await page.waitForFunction(text => globalThis.getDiagnosticsVisualizerHealth().commandQuery === text, text);
@@ -36,7 +36,7 @@ try {
   stage = 'open command palette';
   await page.mouse.click(650, 220);
   await page.keyboard.press('Control+Shift+P');
-  await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth().commandPaletteOpen, null, { timeout: 10_000 });
+  await page.waitForFunction(() => { const h = globalThis.getDiagnosticsVisualizerHealth(); return h.commandPaletteOpen && h.commandInputFocused; }, null, { timeout: 10_000 });
   await page.screenshot({ path: 'artifacts/browser/commands.png', fullPage: true });
   stage = 'filter command palette through real keyboard input';
   await page.keyboard.type('Show Causal chain', { delay: 30 });
@@ -52,6 +52,12 @@ try {
     return health.causalGraphVisible && !health.commandPaletteOpen && health.activeDocuments.includes('causality');
   }, null, { timeout: 10_000 });
   await page.screenshot({ path: 'artifacts/browser/causality.png', fullPage: true });
+  await command('Show Sources');
+  await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth().activeDocuments.includes('sources'));
+  await page.screenshot({ path: 'artifacts/browser/sources.png', fullPage: true });
+  await command('Show Timeline');
+  await page.keyboard.press('F12');
+  await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth().activeDocuments.includes('sources'));
   await command('Show Statistics');
   await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth().statisticsVisible);
   stage = 'select analysis range through real pointer input';
@@ -88,7 +94,7 @@ try {
   // Reload resets the browser's active element; acquire workspace focus as at startup.
   await page.mouse.click(650, 220);
   await page.keyboard.press('Control+Shift+P');
-  await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth().commandPaletteOpen);
+  await page.waitForFunction(() => { const h = globalThis.getDiagnosticsVisualizerHealth(); return h.commandPaletteOpen && h.commandInputFocused; });
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => !globalThis.getDiagnosticsVisualizerHealth().commandPaletteOpen);
   await page.setViewportSize({ width: 1100, height: 760 });
@@ -96,7 +102,7 @@ try {
   await page.screenshot({ path: 'artifacts/browser/compact.png', fullPage: true });
   const finalHealth = await page.evaluate(() => globalThis.getDiagnosticsVisualizerHealth());
   assert.equal(finalHealth.error, '');
-  await writeFile('artifacts/browser/health.json', JSON.stringify({ initial: health, final: finalHealth, keyboardCommands: true, riderPreset: true, pointerRange: true, persistedWorkspace: true }, null, 2));
+  await writeFile('artifacts/browser/health.json', JSON.stringify({ initial: health, final: finalHealth, keyboardCommands: true, riderPreset: true, pointerRange: true, persistedWorkspace: true, sourceNavigation: true }, null, 2));
   assert.deepEqual(errors, [], 'Browser errors or missing assets were detected.');
   console.log(JSON.stringify({ status: 'passed', ...finalHealth }));
 } catch (error) {

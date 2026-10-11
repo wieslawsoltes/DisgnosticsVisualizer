@@ -51,6 +51,8 @@ public sealed partial class WorkbenchView : UserControl, IDisposable
     private readonly DispatcherTimer _filterTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
     private readonly List<(string Name, string Shortcut, Func<Task> Run)> _commands = [];
     private bool _updating, _disposed;
+    private readonly SourceExplorer _sources = new();
+    public void ShowSources() => _factory.Activate("sources");
     public WorkbenchModel Model => _model;
     public WorkbenchView() : this(new WorkbenchModel()) { }
     public WorkbenchView(WorkbenchModel model)
@@ -71,7 +73,7 @@ public sealed partial class WorkbenchView : UserControl, IDisposable
             ["timeline"] = ChartPanel(_timeline, _timeline.Fit), ["flame"] = ChartPanel(_flame, _flame.Fit),
             ["causality"] = ChartPanel(_causal, _causal.Fit), ["systems"] = new ScrollViewer { Content = _systems },
             ["comparison"] = ComparisonPanel(), ["visual"] = TreePanel(_visual), ["logical"] = TreePanel(_logical),
-            ["properties"] = _properties, ["details"] = _details, ["events"] = EventPanel(),
+            ["sources"] = _sources, ["properties"] = _properties, ["details"] = _details, ["events"] = EventPanel(),
             ["findings"] = _findings, ["costs"] = CostPanel(),
             ["topdown"] = _topDown, ["bottomup"] = _bottomUp, ["statistics"] = _statistics, ["threads"] = _threads,
             ["scene"] = _scene, ["history"] = HistoryPanel(), ["bookmarks"] = _bookmarks,
@@ -85,6 +87,8 @@ public sealed partial class WorkbenchView : UserControl, IDisposable
         _overlay = new Border { Background = new SolidColorBrush(Color.Parse("#AA070B12")), IsVisible = false, ZIndex = 1000 };
         Grid.SetRowSpan(_overlay, 7); _root.Children.Add(_overlay); Content = _root;
         WireSelection(); RegisterCommands(); RegisterProfilingCommands();
+        _commands.Add(("Show Sources", "F12", () => { _factory.Activate("sources"); return Task.CompletedTask; }));
+        _details.SourceRequested += () => _factory.Activate("sources");
         InitializeProfiling();
         _model.TraceUpdated += OnTraceUpdated; _model.SelectionChanged += OnSelectionChanged; _model.PropertyChanged += ModelChanged;
         _model.ComparisonUpdated += OnComparisonUpdated;
@@ -138,6 +142,7 @@ public sealed partial class WorkbenchView : UserControl, IDisposable
         _visual.SelectObject(objectId, focus); _logical.SelectObject(objectId, focus);
         _properties.Inspect(_historicalSnapshot is null ? trace : trace with { Snapshot = _historicalSnapshot }, objectId); _details.Inspect(trace, selected);
         _scene.SetSnapshot(_historicalSnapshot ?? trace.Snapshot, objectId);
+        _sources.Inspect(trace, selected);
         if (selected is { } e)
         {
             _causal.SelectEvent(e.Id);

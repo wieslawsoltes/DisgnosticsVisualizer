@@ -8,6 +8,8 @@ public sealed record CaptureOptions
     public int MaxThreads { get; init; } = 128;
     public int MaxObjects { get; init; } = 100_000;
     public int MaxSymbols { get; init; } = 65_536;
+    /// <summary>Opt-in AsyncLocal causality across ExecutionContext boundaries. Adds allocations per recorded span.</summary>
+    public bool FlowExecutionContext { get; init; }
     public int SampleEvery { get; init; } = 1;
     public ulong SubsystemMask { get; init; } = ulong.MaxValue;
     /// <summary>Parse bounded startup settings once, never on a producer's hot path.</summary>
@@ -21,6 +23,13 @@ public sealed record CaptureOptions
             if (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var parsed))
                 throw new ArgumentException($"{name} must be an unsigned decimal integer.");
             return parsed;
+        }
+        bool Boolean(string name)
+        {
+            var value = read(name);
+            if (string.IsNullOrWhiteSpace(value) || value == "0" || string.Equals(value, "false", StringComparison.OrdinalIgnoreCase)) return false;
+            if (value == "1" || string.Equals(value, "true", StringComparison.OrdinalIgnoreCase)) return true;
+            throw new ArgumentException($"{name} must be 0, 1, false or true.");
         }
         var mask = ulong.MaxValue;
         var text = read("AVTRACE_SUBSYSTEM_MASK");
@@ -38,7 +47,8 @@ public sealed record CaptureOptions
             MaxObjects = Integer("AVTRACE_MAX_OBJECTS", 100_000),
             MaxSymbols = Integer("AVTRACE_MAX_SYMBOLS", 65_536),
             SampleEvery = Integer("AVTRACE_SAMPLE_EVERY", 1),
-            SubsystemMask = mask
+            SubsystemMask = mask,
+            FlowExecutionContext = Boolean("AVTRACE_FLOW_EXECUTION_CONTEXT")
         };
         options.Validate(); return options;
     }

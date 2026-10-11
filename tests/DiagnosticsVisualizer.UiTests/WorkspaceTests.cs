@@ -28,6 +28,35 @@ public sealed class TestApplication : Application
 public sealed class WorkspaceTests
 {
     [AvaloniaFact]
+    public async Task SourcesPanelVerifiesLocalFileAndRestoresDocking()
+    {
+        WorkspaceServices.Storage = new MemoryWorkspaceStorage();
+        using var view = new WorkbenchView();
+        var window = new Window { Width = 1600, Height = 1000, Content = view }; window.Show(); Dispatcher.UIThread.RunJobs();
+        Assert.Contains("sources", view.ExportWorkspace());
+        view.ShowSources(); Dispatcher.UIThread.RunJobs();
+        var source = view.GetVisualDescendants().OfType<DiagnosticsVisualizer.Controls.SourceExplorer>().Single();
+        var text = System.Text.Encoding.UTF8.GetBytes("first\nsecond\nthird");
+        var site = new DiagnosticsVisualizer.Core.SourceSite("App", Guid.NewGuid(), 0x06000001, "View.Measure", "View.cs", 2, 1, 2, 6,
+            "SHA256", Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(text)), "", false);
+        var trace = view.Model.Trace!; var selected = trace.Events.First();
+        using var capture = new MemoryStream();
+        await DiagnosticsVisualizer.Protocol.TraceFile.WriteAsync(capture, new DiagnosticsVisualizer.Core.TraceBlock
+        { SessionId = trace.SessionId, Sequence = 1, Symbols = [new(selected.NameId, DiagnosticsVisualizer.Core.SourceSiteSymbol.Encode(site))], Events = [selected], Snapshot = trace.Snapshot });
+        capture.Position = 0; await view.Model.ImportAsync(capture, "Source navigation test fixture"); view.Model.SelectEvent(selected.Id, false);
+        Dispatcher.UIThread.RunJobs();
+        using var stream = new MemoryStream(text); await source.ShowSourceAsync(stream);
+        Assert.Contains("PDB checksum verified", source.StatusText); Assert.Contains("2  second", source.SourceText);
+        using var wrong = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("wrong source"));
+        await Assert.ThrowsAsync<InvalidDataException>(() => source.ShowSourceAsync(wrong));
+        var dock = view.GetVisualDescendants().OfType<DockControl>().First();
+        var panel = WorkbenchDockFactory.Descendants(dock.Layout!).Single(p => p.Id == "sources");
+        ((IDock)panel.Owner!).ActiveDockable = panel; Dispatcher.UIThread.RunJobs();
+        var output = Path.Combine(AppContext.BaseDirectory, "TestResults"); Directory.CreateDirectory(output);
+        using (var bitmap = window.CaptureRenderedFrame()) { Assert.NotNull(bitmap); bitmap.Save(Path.Combine(output, "sources-workbench.png")); }
+        window.Close();
+    }
+    [AvaloniaFact]
     public void RiderWorkbenchRendersAndRestoresPreset()
     {
         WorkspaceServices.Storage = new MemoryWorkspaceStorage();
@@ -73,7 +102,7 @@ public sealed class WorkspaceTests
         WorkspaceServices.Storage = new MemoryWorkspaceStorage(); using var view = new WorkbenchView();
         var state = JsonSerializer.Deserialize<WorkspaceState>(view.ExportWorkspace())!;
         var known = new HashSet<string>(StringComparer.Ordinal);
-        void Collect(DockNodeState node) { if (node.Kind == "Panel") known.Add(node.Id); foreach (var child in node.Children) Collect(child); }
+        void Collect(DockNodeState node) { foreach (var id in node.Hidden) known.Add(id); if (node.Kind == "Panel") known.Add(node.Id); foreach (var child in node.Children) Collect(child); }
         Collect(state.Root);
         var properties = new DockNodeState { Id = "properties" };
         DockNodeState Remove(DockNodeState node) => node with

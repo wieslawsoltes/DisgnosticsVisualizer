@@ -6,7 +6,7 @@ namespace DiagnosticsVisualizer.Weaver;
 /// <summary>Version-adaptive named hooks. The output manifest records actual matches, not assumed coverage.</summary>
 public static class HookCatalog
 {
-    public const string Version = "2";
+    public const string Version = "3";
     public static Subsystem? Match(MethodDefinition method, bool deep)
     {
         var attribute = method.CustomAttributes.Concat(method.DeclaringType.CustomAttributes)
@@ -22,6 +22,8 @@ public static class HookCatalog
             return Subsystem.Layout;
         if (!t.StartsWith("Avalonia.", StringComparison.Ordinal))
         {
+            if (deep && method.CustomAttributes.Any(a => a.AttributeType.FullName == "System.Runtime.CompilerServices.AsyncStateMachineAttribute"))
+                return Subsystem.Application;
             if (n is "OnPropertyChanged" or "RaisePropertyChanged" or "RaiseAndSetIfChanged") return Subsystem.PropertyNotifications;
             if (n is "OnCollectionChanged" or "RaiseCollectionChanged") return Subsystem.CollectionNotifications;
             return null;

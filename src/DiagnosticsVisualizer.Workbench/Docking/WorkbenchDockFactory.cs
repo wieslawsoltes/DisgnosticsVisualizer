@@ -26,13 +26,13 @@ public sealed class WorkbenchDockFactory(IReadOnlyDictionary<string, Control> vi
         {
             var title = id switch
             {
-                "timeline" => "Timeline", "flame" => "Flame chart", "causality" => "Causal chain", "systems" => "Subsystems",
+                "sources" => "Sources", "timeline" => "Timeline", "flame" => "Flame chart", "causality" => "Causal chain", "systems" => "Subsystems",
                 "comparison" => "Compare", "visual" => "Visual tree", "logical" => "Logical tree", "properties" => "Properties & resources",
                 "details" => "Event details", "events" => "Event log", "findings" => "Findings", "costs" => "Hot paths",
                 "topdown" => "Call tree", "bottomup" => "Bottom-up", "statistics" => "Statistics", "threads" => "Thread activity",
                 "scene" => "Layout scene", "history" => "Snapshot history", "bookmarks" => "Bookmarks", "health" => "Capture health", _ => id
             };
-            IDockable panel = id is "timeline" or "flame" or "causality" or "systems" or "comparison" or "topdown" or "bottomup" or "statistics" or "scene" or "history"
+            IDockable panel = id is "sources" or "timeline" or "flame" or "causality" or "systems" or "comparison" or "topdown" or "bottomup" or "statistics" or "scene" or "history"
                 ? new PanelDocument { Id = id, Title = title, View = view, CanClose = false, CanFloat = true }
                 : new PanelTool { Id = id, Title = title, View = view, CanClose = false, CanFloat = true, CanPin = true };
             _panels[id] = panel;
@@ -43,7 +43,12 @@ public sealed class WorkbenchDockFactory(IReadOnlyDictionary<string, Control> vi
         var right = new ToolDock { Id = "right", Alignment = Alignment.Right, Proportion = .23,
             VisibleDockables = Panels("properties", "details", "bookmarks", "health"), IsCollapsable = false };
         var documents = new DocumentDock { Id = "documents", IsCollapsable = false, Proportion = .73, CanCreateDocument = false,
-            VisibleDockables = Panels("timeline", "flame", "topdown", "bottomup", "statistics", "causality", "scene", "history", "systems", "comparison") };
+            VisibleDockables = preset switch
+            {
+                WorkspacePreset.Profile => Panels("flame", "topdown", "bottomup", "statistics"),
+                WorkspacePreset.Compare => Panels("comparison", "timeline"),
+                _ => Panels("timeline", "scene", "causality")
+            } };
         var bottom = new ToolDock { Id = "bottom", Alignment = Alignment.Bottom, Proportion = .27,
             VisibleDockables = Panels("events", "findings", "costs", "threads"), IsCollapsable = false };
         left.ActiveDockable = _panels.GetValueOrDefault("visual"); right.ActiveDockable = _panels.GetValueOrDefault(preset == WorkspacePreset.Profile ? "details" : "properties");
@@ -54,7 +59,7 @@ public sealed class WorkbenchDockFactory(IReadOnlyDictionary<string, Control> vi
         var main = new ProportionalDock { Id = "main", Orientation = Dock.Model.Core.Orientation.Horizontal,
             VisibleDockables = CreateList<IDockable>(left, new ProportionalDockSplitter(), center, new ProportionalDockSplitter(), right) };
         var root = CreateRootDock(); root.Id = "Root"; root.IsCollapsable = false; root.ActiveDockable = main; root.DefaultDockable = main;
-        root.VisibleDockables = CreateList<IDockable>(main); root.HiddenDockables = CreateList<IDockable>();
+        root.VisibleDockables = CreateList<IDockable>(main); root.HiddenDockables = CreateList<IDockable>(_panels.Values.Where(p => p is PanelDocument && !documents.VisibleDockables!.Contains(p)).ToArray());
         root.LeftPinnedDockables = CreateList<IDockable>(); root.RightPinnedDockables = CreateList<IDockable>();
         root.TopPinnedDockables = CreateList<IDockable>(); root.BottomPinnedDockables = CreateList<IDockable>();
         return root;
@@ -68,6 +73,11 @@ public sealed class WorkbenchDockFactory(IReadOnlyDictionary<string, Control> vi
         HostWindowLocator = new Dictionary<string, Func<IHostWindow?>>
         { [nameof(IDockWindow)] = () => DockSettings.UseManagedWindows ? new ManagedHostWindow() : new HostWindow { Title = "Diagnostics Visualizer" } };
         base.InitLayout(layout);
+    }
+    public override void FloatDockable(IDockable dockable)
+    {
+        if (_root?.HiddenDockables?.Contains(dockable) == true) Activate(dockable.Id);
+        base.FloatDockable(dockable);
     }
     public void Activate(string id)
     {

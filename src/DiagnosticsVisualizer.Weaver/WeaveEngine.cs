@@ -67,10 +67,11 @@ public static class WeaveEngine
                     var notifications = MethodRewriter.InstrumentNotifications(module, method);
                     if (category is null && notifications > 0) category = Subsystem.Application;
                     if (category is null) continue;
+                    var sourceSite = SourceSiteBuilder.Create(module, method);
                     var reason = MethodRewriter.Unsupported(method);
-                    if (reason is null) MethodRewriter.Wrap(module, method, category.Value);
+                    if (reason is null) MethodRewriter.Wrap(module, method, category.Value, SourceSiteSymbol.Encode(sourceSite));
                     methodReports.Add(new(method.MetadataToken.ToInt32(), method.FullName, category.ToString()!,
-                        reason is null ? "Instrumented" : notifications > 0 ? "NotificationsOnly" : "Skipped", notifications, reason));
+                        reason is null ? "Instrumented" : notifications > 0 ? "NotificationsOnly" : "Skipped", notifications, reason, sourceSite));
                 }
                 var bootstrapped = options.Bootstrap && module.EntryPoint is not null && TryBootstrap(module, directory, resolver);
                 var changed = bootstrapped || methodReports.Any(r => r.Status != "Skipped");

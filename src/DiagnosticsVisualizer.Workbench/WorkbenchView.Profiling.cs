@@ -115,6 +115,7 @@ public sealed partial class WorkbenchView
             ("health", "Capture health", "M1 8H4L6 3L9 13L11 8H15") }) left.Children.Add(PanelButton(id, title, path));
         foreach (var (id, title, path) in new[] {
             ("properties", "Properties and resources", "M2 3H14M2 8H14M2 13H14M5 1V5M11 6V10M6 11V15"),
+            ("sources", "Sources (F12)", "M5 2L1 8L5 14M11 2L15 8L11 14M9 1L7 15"),
             ("details", "Event details", "M8 2A6 6 0 1 0 8 14A6 6 0 1 0 8 2ZM8 7V11M8 4V5"),
             ("bookmarks", "Bookmarks", "M4 1H12V15L8 11L4 15Z"),
             ("threads", "Thread activity", "M2 14V8H5V14M7 14V2H10V14M12 14V5H15V14") }) right.Children.Add(PanelButton(id, title, path));
