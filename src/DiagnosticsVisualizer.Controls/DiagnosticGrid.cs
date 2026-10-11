@@ -19,6 +19,7 @@ public static class DiagnosticGrid
             grid.Columns.Add(new DataGridTextColumn
             {
                 Header = header, FontSize = 11, Binding = new Binding(property) { StringFormat = property.EndsWith("Ms", StringComparison.Ordinal) || property.EndsWith("Percent", StringComparison.Ordinal) ? "{0:N3}" : null },
+                MinWidth = width < 0 ? 180 : width,
                 Width = width < 0 ? new DataGridLength(1, DataGridLengthUnitType.Star) : new DataGridLength(width)
             });
         return grid;

@@ -9,6 +9,7 @@ public sealed record CostRow(string Name, Subsystem Subsystem, int Count, double
 public sealed record CausalEdge(long Source, long Target, string Kind, bool Inferred = false);
 public sealed record AnalysisResult(CostRow[] Costs, Finding[] Findings, CausalEdge[] Edges)
 {
+    public XamlSourceIndex? XamlSources { get; init; }
     public DispatcherOperation[] DispatcherOperations { get; init; } = [];
     public AsyncOperation[] AsyncOperations { get; init; } = [];
 }
@@ -87,7 +88,7 @@ public static class TraceAnalyzer
             findings.Insert(0, new("Warning", "Capture is incomplete",
                 $"{trace.DroppedEvents} dropped events, {trace.MissingBlocks} missing batches, {trace.MetadataDrops} metadata drops. Absence of an event is not evidence it did not happen.", 0, 0));
         if (trace.ProbeFaults > 0) findings.Insert(0, new("Error", "Instrumentation faults", $"{trace.ProbeFaults} probe faults were contained. Review the weaving manifest and compatibility report.", 0, 0));
-        return new(costs, findings.Take(2000).ToArray(), edges.ToArray()) { DispatcherOperations = dispatcher, AsyncOperations = global::DiagnosticsVisualizer.Analysis.AsyncOperations.Analyze(trace) };
+        return new(costs, findings.Take(2000).ToArray(), edges.ToArray()) { XamlSources = new(trace), DispatcherOperations = dispatcher, AsyncOperations = global::DiagnosticsVisualizer.Analysis.AsyncOperations.Analyze(trace) };
     }
     private static long CoveredDuration(TraceEvent parent, List<TraceEvent>? children)
     {

@@ -96,7 +96,7 @@ public sealed class SourceExplorer : UserControl
         _open.IsEnabled = site is { Line: > 0 }; _copy.IsEnabled = site is { SourceUrl.Length: > 0 };
         _identity.Text = site is null ? "" : $"{site.Assembly} • original MVID/token {site.Identity}\n{site.HashAlgorithm} {site.Checksum}\n{site.SourceUrl}";
         _status.Text = site is null ? "This event has no source metadata. Legacy captures and notification-only sites remain supported."
-            : $"{site.Location} • {(site.AsyncKickoff ? "Async kickoff: this span ends at synchronous return, not asynchronous completion." : "First visible sequence point, not an exact instruction-level sample.")}";
+            : $"{site.Location} • {(site.Mapping != SourceMappingKind.Method ? $"{site.Mapping} at original IL_{site.IlOffset:X4}; compiler sequence point, not reconstructed markup." : site.AsyncKickoff ? "Async kickoff: this span ends at synchronous return, not asynchronous completion." : "First visible sequence point, not an exact instruction-level sample.")}";
     }
 
     public async Task ShowSourceAsync(Stream stream, CancellationToken cancellationToken = default)

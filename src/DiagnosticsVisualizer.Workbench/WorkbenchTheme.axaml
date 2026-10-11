@@ -23,33 +23,34 @@
     <Setter Property="CornerRadius" Value="5" />
     <Setter Property="FontSize" Value="11" />
   </Style>
-  <Style Selector="DataGrid">
+  <Style Selector=".dv-workbench DataGrid">
     <Setter Property="Background" Value="#1F2124" />
     <Setter Property="Foreground" Value="#DFE1E5" />
     <Setter Property="BorderThickness" Value="0" />
     <Setter Property="FontSize" Value="11" />
   </Style>
-  <Style Selector="DataGridColumnHeader">
+  <Style Selector=".dv-workbench DataGridColumnHeader">
+    <Setter Property="Padding" Value="8,4" />
     <Setter Property="Background" Value="#2B2D30" />
     <Setter Property="Foreground" Value="#9DA0A8" />
     <Setter Property="FontSize" Value="11" />
   </Style>
-  <Style Selector="DataGridRow">
+  <Style Selector=".dv-workbench DataGridRow">
     <Setter Property="MinHeight" Value="26" />
   </Style>
-  <Style Selector="ListBoxItem">
+  <Style Selector=".dv-workbench ListBoxItem">
     <Setter Property="Padding" Value="2,1" />
     <Setter Property="MinHeight" Value="25" />
   </Style>
-  <Style Selector="TabItem">
+  <Style Selector=".dv-workbench TabItem">
     <Setter Property="FontSize" Value="11" />
     <Setter Property="MinHeight" Value="30" />
     <Setter Property="Padding" Value="10,7" />
   </Style>
-  <Style Selector="ToolChromeControl">
+  <Style Selector=".dv-workbench ToolChromeControl">
     <Setter Property="Background" Value="#1F2124" />
   </Style>
-  <Style Selector="DockControl">
+  <Style Selector=".dv-workbench DockControl">
     <Setter Property="Background" Value="#1F2124" />
   </Style>
 </Styles>
