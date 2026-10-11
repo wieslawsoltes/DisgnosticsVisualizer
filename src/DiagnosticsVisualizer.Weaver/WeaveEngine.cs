@@ -59,6 +59,11 @@ public static class WeaveEngine
                 }
                 var module = assembly.MainModule; var originalMvid = module.Mvid.ToString();
                 var signed = assembly.Name.HasPublicKey; var methodReports = new List<MethodReport>();
+                // Capture identities before any kickoff body or generated MoveNext is rewritten.
+                foreach (var kickoff in AllTypes(module.Types).SelectMany(t => t.Methods).ToArray())
+                    if (HookCatalog.Match(kickoff, options.Deep) is { } subsystem &&
+                        AsyncStateMachineRewriter.Instrument(module, kickoff, subsystem) is { } lifecycle)
+                        methodReports.Add(lifecycle);
                 foreach (var type in AllTypes(module.Types))
                 foreach (var method in type.Methods.ToArray())
                 {
