@@ -85,15 +85,18 @@ public sealed class CaptureSession : IDisposable
                 for (var i = 0; i < writers.Length && events.Count < maxEvents; i++) writers[(start + i) % writers.Length].Drain(events, maxEvents);
                 if (_drainStart == int.MaxValue) _drainStart = 0;
             }
-            var symbolIds = new HashSet<int>(); var objectIds = new HashSet<long>();
-            foreach (var e in events) { symbolIds.Add(e.NameId); objectIds.Add(e.ObjectId); objectIds.Add(e.RelatedId); }
-            var symbols = symbolIds.Where(id => id != 0 && _symbols.ContainsKey(id)).Select(id => new Symbol(id, _symbols[id])).ToArray();
-            var objects = objectIds.Where(id => id != 0 && _objects.ContainsKey(id)).Select(id => _objects[id]).ToArray();
+            var snapshot = Interlocked.Exchange(ref _snapshot, null);
+            var symbols = events.Select(e => e.NameId).Distinct().Where(id => id != 0 && _symbols.ContainsKey(id))
+                .Select(id => new Symbol(id, _symbols[id])).ToArray();
+            var metadata = TraceObjectReferences.Enumerate(events, snapshot).Where(_objects.ContainsKey)
+                .Take(TraceLimits.MaxObjectsPerBlock + 1).Select(id => _objects[id]).ToArray();
+            if (metadata.Length > TraceLimits.MaxObjectsPerBlock) Interlocked.Increment(ref _metadataDrops);
+            var objects = metadata.Take(TraceLimits.MaxObjectsPerBlock).ToArray();
             return new TraceBlock { SessionId = Id, Sequence = Interlocked.Increment(ref _blockSequence),
                 Frequency = Stopwatch.Frequency, OriginTimestamp = OriginTimestamp, UtcStartTicks = UtcStartTicks,
                 DroppedEvents = DroppedEvents, ProbeFaults = ProbeFaults, MetadataDrops = MetadataDrops,
                 Recording = Recording, Symbols = symbols, Objects = objects, Events = events.ToArray(),
-                Snapshot = Interlocked.Exchange(ref _snapshot, null) };
+                Snapshot = snapshot };
         }
     }
     public void Dispose()

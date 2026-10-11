@@ -24,7 +24,7 @@ public static partial class Probe
     /// </summary>
     public static void AsyncBegin(ref AsyncOperationToken token, int subsystem, string site, object? target)
     {
-        if (Interlocked.CompareExchange(ref token.State, 1, 0) != 0) return;
+        if (Volatile.Read(ref token.State) != 0 || Interlocked.CompareExchange(ref token.State, 1, 0) != 0) return;
         var session = Current;
         if (session is null || !session.Recording || !session.Options.TrackAsyncOperations ||
             _insideProbe || _suppressionDepth != 0 || (uint)subsystem > (uint)Subsystem.Diagnostics ||

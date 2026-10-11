@@ -9,21 +9,59 @@ public static class TraceExport
     public static async Task WriteBinaryAsync(Stream stream, TraceView trace, CancellationToken cancellationToken = default)
     {
         long sequence = 0;
-        foreach (var events in trace.Events.Chunk(4096))
+        var session = trace.SessionId == Guid.Empty ? Guid.NewGuid() : trace.SessionId;
+        var exportedObjects = new HashSet<long>();
+        ObjectInfo[] Objects(IEnumerable<TraceEvent> events, SnapshotData? snapshot)
         {
-            var names = events.Select(e => e.NameId).Distinct().Where(trace.Symbols.ContainsKey).Select(id => new Symbol(id, trace.SourceSites.TryGetValue(id, out var site) ? SourceSiteSymbol.Encode(site) : trace.Symbols[id])).ToArray();
-            var objects = events.SelectMany(e => new[] { e.ObjectId, e.RelatedId }).Distinct().Where(trace.Objects.ContainsKey).Select(id => trace.Objects[id]).ToArray();
+            var result = TraceObjectReferences.Enumerate(events, snapshot).Where(trace.Objects.ContainsKey)
+                .Take(TraceLimits.MaxObjectsPerBlock).Select(id => trace.Objects[id]).ToArray();
+            foreach (var item in result) exportedObjects.Add(item.Id);
+            return result;
+        }
+        async Task Write(TraceEvent[] events, Symbol[] symbols, ObjectInfo[] objects, SnapshotData? snapshot)
+        {
             await TraceFile.WriteAsync(stream, new TraceBlock
             {
-                SessionId = trace.SessionId, Sequence = ++sequence, Frequency = trace.Frequency,
+                SessionId = session, Sequence = ++sequence, Frequency = trace.Frequency,
                 OriginTimestamp = trace.OriginTimestamp, DroppedEvents = trace.DroppedEvents,
                 ProbeFaults = trace.ProbeFaults, MetadataDrops = trace.MetadataDrops, Recording = false,
-                Symbols = names, Objects = objects, Events = events, Snapshot = sequence == 1 ? trace.Snapshot : null
+                Symbols = symbols, Objects = objects, Events = events, Snapshot = snapshot
             }, cancellationToken).ConfigureAwait(false);
         }
-        if (sequence == 0) await TraceFile.WriteAsync(stream, new()
-        { SessionId = trace.SessionId == Guid.Empty ? Guid.NewGuid() : trace.SessionId, Sequence = 1, Frequency = trace.Frequency,
-          OriginTimestamp = trace.OriginTimestamp, Snapshot = trace.Snapshot, Recording = false }, cancellationToken).ConfigureAwait(false);
+        async Task Events(TraceEvent[] events, SnapshotData? snapshot)
+        {
+            var names = events.Select(e => e.NameId).Distinct().Where(trace.Symbols.ContainsKey).Select(id => new Symbol(id,
+                trace.SourceSites.TryGetValue(id, out var site) ? SourceSiteSymbol.Encode(site) : trace.Symbols[id])).ToArray();
+            await Write(events, names, Objects(events, snapshot), snapshot).ConfigureAwait(false);
+        }
+        // Retained snapshots must survive an export even when the latest checkpoint correctly
+        // observes an empty tree at shutdown. Rebatch by end watermark; preserve every event's
+        // original identity/timestamps. This is observation order, not a transactional replay.
+        var ordered = trace.Events.OrderBy(e => e.End).ThenBy(e => e.Id).ToArray(); var cursor = 0;
+        var checkpoints = trace.Checkpoints.ToList();
+        if (checkpoints.Count == 0 || !ReferenceEquals(checkpoints[^1].Data, trace.Snapshot))
+            checkpoints.Add(new(0, ordered.Length == 0 ? 0 : ordered[^1].End, trace.Snapshot));
+        foreach (var checkpoint in checkpoints)
+        {
+            while (cursor < ordered.Length && ordered[cursor].End <= checkpoint.EventWatermark)
+            {
+                var start = cursor;
+                while (cursor < ordered.Length && cursor - start < 4096 && ordered[cursor].End <= checkpoint.EventWatermark) cursor++;
+                await Events(ordered[start..cursor], null).ConfigureAwait(false);
+            }
+            await Events([], checkpoint.Data).ConfigureAwait(false);
+        }
+        while (cursor < ordered.Length)
+        {
+            var end = Math.Min(ordered.Length, cursor + 4096);
+            await Events(ordered[cursor..end], null).ConfigureAwait(false); cursor = end;
+        }
+        // A checkpoint can refer to more metadata than one frame permits. Preserve its closure
+        // through bounded metadata-only batches; never silently discard snapshot-only nodes.
+        foreach (var objects in checkpoints.SelectMany(c => TraceObjectReferences.Enumerate([], c.Data)).Distinct()
+            .Where(id => !exportedObjects.Contains(id) && trace.Objects.ContainsKey(id))
+            .Select(id => trace.Objects[id]).Chunk(TraceLimits.MaxObjectsPerBlock))
+            await Write([], [], objects, null).ConfigureAwait(false);
     }
     /// <summary>Chrome Trace Event JSON, importable in Perfetto. CPU spans are never labelled GPU timings.</summary>
     public static async Task WriteChromeJsonAsync(Stream stream, TraceView trace, CancellationToken cancellationToken = default)
@@ -42,13 +80,18 @@ public static class TraceExport
         {
             cancellationToken.ThrowIfCancellationRequested();
             writer.WriteStartObject(); writer.WriteString("name", trace.Name(e)); writer.WriteString("cat", e.Subsystem.ToString());
-            writer.WriteString("ph", e.Kind == TraceEventKind.Span ? "X" : "i");
+            var asyncStart = AsyncOperationEvent.IsBegin(e); var asyncEnd = AsyncOperationEvent.IsEnd(e);
+            writer.WriteString("ph", asyncStart ? "b" : asyncEnd ? "e" : e.Kind == TraceEventKind.Span ? "X" : "i");
+            if (asyncStart || asyncEnd)
+            { writer.WriteString("id", $"async-{(asyncStart ? e.Id : e.ParentId)}"); writer.WriteString("scope", "avtrace-async"); }
             writer.WriteNumber("pid", 1); writer.WriteNumber("tid", e.ThreadId);
             writer.WriteNumber("ts", (e.Timestamp - (double)trace.OriginTimestamp) * 1_000_000 / trace.Frequency);
-            if (e.Kind == TraceEventKind.Span) writer.WriteNumber("dur", e.Duration * 1_000_000d / trace.Frequency); else writer.WriteString("s", "t");
+            if (e.Kind == TraceEventKind.Span) writer.WriteNumber("dur", e.Duration * 1_000_000d / trace.Frequency); else if (!asyncStart && !asyncEnd) writer.WriteString("s", "t");
             writer.WriteStartObject("args"); writer.WriteString("eventId", e.Id.ToString());
             writer.WriteString("parentId", e.ParentId.ToString()); writer.WriteString("objectId", e.ObjectId.ToString());
             writer.WriteString("relatedObjectId", e.RelatedId.ToString());
+            if (asyncStart || asyncEnd) writer.WriteString("measurement", "Async state-machine lifetime, including suspension; not CPU time");
+            if (asyncEnd) writer.WriteString("outcome", ((AsyncOperationOutcome)e.Data1).ToString());
             if (trace.SourceSites.TryGetValue(e.NameId, out var site))
             {
                 writer.WriteString("source", site.Location); writer.WriteString("methodIdentity", site.Identity);
