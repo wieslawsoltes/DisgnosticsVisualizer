@@ -52,6 +52,15 @@ try {
     return health.causalGraphVisible && !health.commandPaletteOpen && health.activeDocuments.includes('causality');
   }, null, { timeout: 10_000 });
   await page.screenshot({ path: 'artifacts/browser/causality.png', fullPage: true });
+  await command('Show Dependencies');
+  await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth().activeDocuments.includes('dependencies'));
+  await page.screenshot({ path: 'artifacts/browser/dependencies.png', fullPage: true });
+  await command('Show Async operations');
+  await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth().activeDocuments.includes('async'));
+  await page.screenshot({ path: 'artifacts/browser/async-lifetimes.png', fullPage: true });
+  await command('Toggle focus workspace');
+  await page.screenshot({ path: 'artifacts/browser/focus-workspace.png', fullPage: true });
+  await command('Toggle focus workspace');
   await command('Show Sources');
   await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth().activeDocuments.includes('sources'));
   await page.screenshot({ path: 'artifacts/browser/sources.png', fullPage: true });
