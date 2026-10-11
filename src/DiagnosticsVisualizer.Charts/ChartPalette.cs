@@ -12,6 +12,7 @@ public static class ChartPalette
     public static readonly IBrush Alternate = new SolidColorBrush(Color.Parse("#2B2D30"));
     public static readonly IBrush Foreground = new SolidColorBrush(Color.Parse("#DFE1E5"));
     public static readonly IBrush Muted = new SolidColorBrush(Color.Parse("#9DA0A8"));
+    public static readonly IBrush Selection = new SolidColorBrush(Color.Parse("#35537A"));
     public static readonly IBrush Accent = new SolidColorBrush(Color.Parse("#4C9FFF"));
     public static readonly Pen Grid = new(new SolidColorBrush(Color.Parse("#393C40")), 1);
     private static readonly IBrush[] Brushes = new[]

@@ -35,7 +35,7 @@ public sealed class SampleApplication : Application
             window.Opened += (_, _) =>
             {
                 DispatcherTimer.RunOnce(window.Exercise, TimeSpan.FromMilliseconds(150));
-                DispatcherTimer.RunOnce(() => desktop.Shutdown(0), TimeSpan.FromSeconds(2));
+                DispatcherTimer.RunOnce(() => { window.VerifyResources(); desktop.Shutdown(0); }, TimeSpan.FromSeconds(2));
             };
         }
         base.OnFrameworkInitializationCompleted();
@@ -45,10 +45,21 @@ public sealed class SampleApplication : Application
 public sealed partial class WorkloadWindow : Window
 {
     private readonly WorkloadModel _model = new();
+    private int _deferredBuilds;
     public WorkloadWindow()
     {
         AvaloniaXamlLoader.Load(this);
         DataContext = _model;
+        var deferred = new ResourceDictionary();
+        deferred.AddDeferred("DiagnosticsLazy", _ => { _deferredBuilds++; return "Deferred value"; });
+        Resources.MergedDictionaries.Add(deferred);
+        Resources.ThemeDictionaries[ThemeVariant.Dark] = new ResourceDictionary { ["DiagnosticsVariant"] = 42 };
+
+    }
+    public void VerifyResources()
+    {
+        if (_deferredBuilds != 0) throw new InvalidOperationException("Diagnostics materialized a deferred resource.");
+        Console.WriteLine("RESOURCE_WORKLOAD_OK deferred=0");
     }
     public async void Exercise()
     {

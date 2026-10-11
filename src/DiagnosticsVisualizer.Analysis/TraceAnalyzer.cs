@@ -7,7 +7,10 @@ public sealed record Finding(string Severity, string Title, string Explanation, 
 public sealed record CostRow(string Name, Subsystem Subsystem, int Count, double TotalMs,
     double SelfMs, double MaximumMs);
 public sealed record CausalEdge(long Source, long Target, string Kind, bool Inferred = false);
-public sealed record AnalysisResult(CostRow[] Costs, Finding[] Findings, CausalEdge[] Edges);
+public sealed record AnalysisResult(CostRow[] Costs, Finding[] Findings, CausalEdge[] Edges)
+{
+    public AsyncOperation[] AsyncOperations { get; init; } = [];
+}
 
 public static class TraceAnalyzer
 {
@@ -24,7 +27,7 @@ public static class TraceAnalyzer
             {
                 if (!children.TryGetValue(e.ParentId, out var list)) children[e.ParentId] = list = [];
                 list.Add(e);
-                var kind = parent.ThreadId != e.ThreadId ? "cross-thread causal parent" :
+                var kind = AsyncOperationEvent.IsBegin(parent) && AsyncOperationEvent.IsEnd(e) ? "async completion" : parent.ThreadId != e.ThreadId ? "cross-thread causal parent" :
                     e.Timestamp < parent.Timestamp || e.End > parent.End ? "continuation parent" : "synchronous parent";
                 edges.Add(new(e.ParentId, e.Id, kind));
             }
@@ -79,7 +82,7 @@ public static class TraceAnalyzer
             findings.Insert(0, new("Warning", "Capture is incomplete",
                 $"{trace.DroppedEvents} dropped events, {trace.MissingBlocks} missing batches, {trace.MetadataDrops} metadata drops. Absence of an event is not evidence it did not happen.", 0, 0));
         if (trace.ProbeFaults > 0) findings.Insert(0, new("Error", "Instrumentation faults", $"{trace.ProbeFaults} probe faults were contained. Review the weaving manifest and compatibility report.", 0, 0));
-        return new(costs, findings.Take(2000).ToArray(), edges.ToArray());
+        return new(costs, findings.Take(2000).ToArray(), edges.ToArray()) { AsyncOperations = global::DiagnosticsVisualizer.Analysis.AsyncOperations.Analyze(trace) };
     }
     private static long CoveredDuration(TraceEvent parent, List<TraceEvent>? children)
     {

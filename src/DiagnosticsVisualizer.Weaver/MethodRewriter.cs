@@ -49,7 +49,7 @@ internal static class MethodRewriter
         if (count > 0) { method.Body.InitLocals = true; ExpandBranches(method); }
         return count;
     }
-    private static void RedirectTargets(MethodDefinition method, Instruction oldTarget, Instruction newTarget)
+    internal static void RedirectTargets(MethodDefinition method, Instruction oldTarget, Instruction newTarget)
     {
         foreach (var i in method.Body.Instructions)
         {
@@ -106,7 +106,7 @@ internal static class MethodRewriter
         foreach (var instruction in prelude) il.InsertBefore(originalStart, instruction);
         body.InitLocals = true; body.MaxStackSize = Math.Max(body.MaxStackSize, 8);
     }
-    private static void ExpandBranches(MethodDefinition method)
+    internal static void ExpandBranches(MethodDefinition method)
     {
         foreach (var i in method.Body.Instructions)
             i.OpCode = i.OpCode.Code switch

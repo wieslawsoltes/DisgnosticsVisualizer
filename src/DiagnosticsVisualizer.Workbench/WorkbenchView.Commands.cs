@@ -136,7 +136,8 @@ public sealed partial class WorkbenchView
         if (_overlay.IsVisible) return;
         if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
-            if (e.Key == Key.B) { e.Handled = true; _model.AddBookmark(); }
+            if (e.Key == Key.F && e.KeyModifiers.HasFlag(KeyModifiers.Shift)) { e.Handled = true; ToggleFocusMode(); }
+            else if (e.Key == Key.B) { e.Handled = true; _model.AddBookmark(); }
             else if (e.Key == Key.O) { e.Handled = true; await RunAsync(() => OpenAsync(false)); }
             else if (e.Key == Key.S) { e.Handled = true; await RunAsync(() => SaveAsync(false)); }
             else if (e.Key == Key.L) { e.Handled = true; ShowConnection(); }

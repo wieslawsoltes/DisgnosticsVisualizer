@@ -23,7 +23,7 @@ public static class DemoTraceFactory
             new(19, "Compositor.Commit"), new(20, "ServerCompositor.Render"),
             new(21, "Interactive.RaiseEvent: PointerPressed"), new(22, "!XamlIlPopulate: DashboardView"),
             new(23, "StaticResource.ProvideValue: CardPadding"), new(24, "Application.Frame"),
-            new(25, "Dispatcher.Enqueue"), new(26, "Trace checkpoint")
+            new(25, "Dispatcher.Enqueue"), new(26, "Trace checkpoint"), new(27, "DashboardViewModel.RefreshAsync")
         };
         var nodes = new List<NodeSnapshot>
         {
@@ -73,6 +73,13 @@ public static class DemoTraceFactory
                 => events.Add(new(++id, parent == 0 ? dispatcher : parent, start + offset, duration, obj, 0, thread, symbol, category));
             Span(2, Subsystem.Animation, 100, 230, 5);
             Span(21, Subsystem.RoutedEvents, 340, 120, 5);
+            if (f % 30 == 0)
+            {
+                var operation = ++id;
+                events.Add(new(operation, dispatcher, start + 480, 0, 103, 0, 1, 27, Subsystem.Application, TraceEventKind.Link, AsyncOperationEvent.BeginCode));
+                events.Add(new(++id, operation, start + 40000 + f * 180, 0, 103, 0, 8, 27, Subsystem.Application,
+                    TraceEventKind.Link, AsyncOperationEvent.EndCode, (long)(f % 90 == 60 ? AsyncOperationOutcome.Canceled : AsyncOperationOutcome.Succeeded)));
+            }
             var notification = ++id; events.Add(new(notification, dispatcher, start + 480, 850, 103, 0, 1, 3, Subsystem.PropertyNotifications));
             var binding = ++id; events.Add(new(binding, notification, start + 520, 660, 5, 103, 1, 4, Subsystem.Bindings));
             Span(5, Subsystem.Properties, 600, 460, 5, binding);

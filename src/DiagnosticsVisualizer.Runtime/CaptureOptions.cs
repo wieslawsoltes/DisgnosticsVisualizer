@@ -10,6 +10,8 @@ public sealed record CaptureOptions
     public int MaxSymbols { get; init; } = 65_536;
     /// <summary>Opt-in AsyncLocal causality across ExecutionContext boundaries. Adds allocations per recorded span.</summary>
     public bool FlowExecutionContext { get; init; }
+    /// <summary>Opt-in standard async state-machine lifecycle markers. Allocates one weak session reference per sampled operation.</summary>
+    public bool TrackAsyncOperations { get; init; }
     public int SampleEvery { get; init; } = 1;
     public ulong SubsystemMask { get; init; } = ulong.MaxValue;
     /// <summary>Parse bounded startup settings once, never on a producer's hot path.</summary>
@@ -48,7 +50,8 @@ public sealed record CaptureOptions
             MaxSymbols = Integer("AVTRACE_MAX_SYMBOLS", 65_536),
             SampleEvery = Integer("AVTRACE_SAMPLE_EVERY", 1),
             SubsystemMask = mask,
-            FlowExecutionContext = Boolean("AVTRACE_FLOW_EXECUTION_CONTEXT")
+            FlowExecutionContext = Boolean("AVTRACE_FLOW_EXECUTION_CONTEXT"),
+            TrackAsyncOperations = Boolean("AVTRACE_ASYNC_OPERATIONS")
         };
         options.Validate(); return options;
     }

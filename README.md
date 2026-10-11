@@ -4,7 +4,15 @@ A cross-subsystem Avalonia trace recorder, inspector and Rider-style docking wor
 
 [Browser workbench](https://wieslawsoltes.github.io/DisgnosticsVisualizer/) · [Build/integration](https://github.com/wieslawsoltes/DisgnosticsVisualizer/actions/workflows/build.yml) · [Browser verification/deployment](https://github.com/wieslawsoltes/DisgnosticsVisualizer/actions/workflows/browser.yml)
 
-**0.1.0-alpha.5.** An actively validated implementation, not a claim of complete coverage of every Avalonia release or Chrome DevTools feature. The browser starts with a labelled synthetic example; it never pretends to be attached to an application. Check the deployment workflow for the current publication status.
+**0.1.0-alpha.6.** An actively validated implementation, not a claim of complete coverage of every Avalonia release or Chrome DevTools feature. The browser starts with a labelled synthetic example; it never pretends to be attached to an application. Check the deployment workflow for the current publication status.
+
+### New in alpha.6
+
+Standard Task/ValueTask/async-void **state-machine lifetimes** are available with `AVTRACE_ASYNC_OPERATIONS=1` on deep-instrumented output. Returned awaitables are neither wrapped nor consumed. The shared Async operations document provides outcome filtering, a bounded waterfall and exact range selection; wait time is not counted as CPU/self time.
+
+A new **Dependencies** document connects recorded visual/logical/template parents with resource/style/template/data relationships, supports incoming/outgoing navigation, and follows historical checkpoints. Raw resource candidates include logical ancestors and merged/theme dictionaries without materializing deferred values. Snapshot-only type metadata survives transport and export. Property precedence can be filtered to the selected effective value; active frames and resource candidates are not labelled as guaranteed winners.
+
+The Rider compact theme now highlights active panel rails. `Ctrl+Shift+F` toggles a focus workspace without destroying or persisting changes to dock topology. See [async lifetimes and semantic inspection](docs/async-lifetimes.md) for measurement boundaries, performance controls and validation.
 
 ## Workbench
 
@@ -76,7 +84,7 @@ Build the local feed with `bash eng/pack.sh`. Add this reference to the applicat
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="DiagnosticsVisualizer.Build" Version="0.1.0-alpha.5" />
+  <PackageReference Include="DiagnosticsVisualizer.Build" Version="0.1.0-alpha.6" />
 </ItemGroup>
 <PropertyGroup>
   <DiagnosticsEnabled>true</DiagnosticsEnabled>
@@ -138,7 +146,7 @@ using var view = new WorkbenchView(model);
 
 `Inspector.AttachRoot` supports explicit roots; `Inspector.ExcludeRoot` omits the workbench root from snapshots. It does not remove rendering cost. Prefer an out-of-process viewer for target performance investigations. See [embedding](docs/embedding.md).
 
-Add application spans with `Probe.Enter`, instant events or annotated methods with `TraceAttribute`. `TraceContext.Capture()` creates a session-scoped parent token that can cross threads/await; `token.Resume()` installs it for a synchronous continuation. Scope/context leases are ref structs and cannot span an await. For automatic propagation through flowing .NET execution contexts, opt in with `AVTRACE_FLOW_EXECUTION_CONTEXT=1` or `CaptureOptions.FlowExecutionContext = true`. This covers ordinary awaits and Task.Run without modifying application source, including ConfigureAwait(false). Suppressed/unsafe execution-context boundaries still require explicit tokens. Async kickoff span duration ends at synchronous return, not task completion.
+Add application spans with `Probe.Enter`, instant events or annotated methods with `TraceAttribute`. `TraceContext.Capture()` creates a session-scoped parent token that can cross threads/await; `token.Resume()` installs it for a synchronous continuation. Scope/context leases are ref structs and cannot span an await. For automatic propagation through flowing .NET execution contexts, opt in with `AVTRACE_FLOW_EXECUTION_CONTEXT=1` or `CaptureOptions.FlowExecutionContext = true`. This covers ordinary awaits and Task.Run without modifying application source, including ConfigureAwait(false). Suppressed/unsafe execution-context boundaries still require explicit tokens. Async kickoff span duration ends at synchronous return, not task completion. Separately, `AVTRACE_ASYNC_OPERATIONS=1` records standard state-machine lifetimes through their terminal transition.
 
 ## Performance and validation
 
