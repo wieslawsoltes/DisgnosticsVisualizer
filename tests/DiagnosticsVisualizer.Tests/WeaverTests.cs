@@ -29,6 +29,9 @@ public sealed class WeaverTests
             var options = new WeaveOptions(directory) { Include = [Path.GetFileName(target)], Bootstrap = false };
             var report = WeaveEngine.Weave(options);
             Assert.Contains(report.Assemblies[0].Methods, m => m.Signature.Contains("ReferenceReturn") && m.Status == "Skipped");
+            var mapped = report.Assemblies[0].Methods.First(m => m.Signature.Contains("Compute") && m.Status == "Instrumented").Source;
+            Assert.NotNull(mapped); Assert.True(mapped.Line > 0); Assert.Equal("Subject.cs", mapped.Document);
+            Assert.Equal(Guid.Parse(report.Assemblies[0].OriginalMvid), mapped.ModuleId);
             var woven = SHA256.HashData(File.ReadAllBytes(target)); Assert.NotEqual(Convert.ToHexString(original), Convert.ToHexString(woven));
             WeaveEngine.Weave(options); Assert.Equal(woven, SHA256.HashData(File.ReadAllBytes(target)));
             using (var session = Probe.Start())
@@ -44,7 +47,9 @@ public sealed class WeaverTests
                     Assert.IsType<InvalidOperationException>(error.InnerException); Assert.Equal("original exception", error.InnerException!.Message);
                     Assert.Equal(15, type.GetField("FinallyCount")!.GetValue(null));
                     Assert.Equal(123, type.GetMethod("Echo")!.MakeGenericMethod(typeof(int)).Invoke(null, [123]));
-                    var events = session.Drain().Events; Assert.Equal(6, events.Length); Assert.All(events, e => Assert.True(e.Duration >= 0));
+                    var block = session.Drain();
+                    Assert.All(block.Symbols, symbol => Assert.True(SourceSiteSymbol.TryDecode(symbol.Name, out _)));
+                    var events = block.Events; Assert.Equal(6, events.Length); Assert.All(events, e => Assert.True(e.Duration >= 0));
                     Assert.Equal(0, session.ProbeFaults);
                 }
                 finally { context.Unload(); }

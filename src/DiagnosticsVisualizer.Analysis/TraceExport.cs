@@ -11,7 +11,7 @@ public static class TraceExport
         long sequence = 0;
         foreach (var events in trace.Events.Chunk(4096))
         {
-            var names = events.Select(e => e.NameId).Distinct().Where(trace.Symbols.ContainsKey).Select(id => new Symbol(id, trace.Symbols[id])).ToArray();
+            var names = events.Select(e => e.NameId).Distinct().Where(trace.Symbols.ContainsKey).Select(id => new Symbol(id, trace.SourceSites.TryGetValue(id, out var site) ? SourceSiteSymbol.Encode(site) : trace.Symbols[id])).ToArray();
             var objects = events.SelectMany(e => new[] { e.ObjectId, e.RelatedId }).Distinct().Where(trace.Objects.ContainsKey).Select(id => trace.Objects[id]).ToArray();
             await TraceFile.WriteAsync(stream, new TraceBlock
             {
@@ -48,7 +48,25 @@ public static class TraceExport
             if (e.Kind == TraceEventKind.Span) writer.WriteNumber("dur", e.Duration * 1_000_000d / trace.Frequency); else writer.WriteString("s", "t");
             writer.WriteStartObject("args"); writer.WriteString("eventId", e.Id.ToString());
             writer.WriteString("parentId", e.ParentId.ToString()); writer.WriteString("objectId", e.ObjectId.ToString());
-            writer.WriteString("relatedObjectId", e.RelatedId.ToString()); writer.WriteEndObject(); writer.WriteEndObject();
+            writer.WriteString("relatedObjectId", e.RelatedId.ToString());
+            if (trace.SourceSites.TryGetValue(e.NameId, out var site))
+            {
+                writer.WriteString("source", site.Location); writer.WriteString("methodIdentity", site.Identity);
+                writer.WriteString("sourceChecksum", site.Checksum); writer.WriteString("sourceUrl", site.SourceUrl);
+                writer.WriteBoolean("asyncKickoff", site.AsyncKickoff);
+            }
+            writer.WriteEndObject(); writer.WriteEndObject();
+            if (++count % 4096 == 0) await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+        }
+        // Cross-thread or out-of-span parentage is a causal handoff, not CPU nesting.
+        var byId = trace.Events.ToDictionary(e => e.Id);
+        foreach (var child in trace.Events)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!byId.TryGetValue(child.ParentId, out var parent) || parent.Timestamp > child.Timestamp ||
+                (parent.ThreadId == child.ThreadId && child.End <= parent.End)) continue;
+            WriteFlow(writer, trace, child.Id, parent.ThreadId, Math.Min(parent.End, child.Timestamp), "s");
+            WriteFlow(writer, trace, child.Id, child.ThreadId, child.Timestamp, "f");
             if (++count % 4096 == 0) await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
         }
         writer.WriteEndArray(); writer.WriteStartObject("diagnosticsVisualizer");
@@ -56,6 +74,15 @@ public static class TraceExport
         writer.WriteNumber("missingBlocks", trace.MissingBlocks); writer.WriteNumber("probeFaults", trace.ProbeFaults);
         writer.WriteNumber("evictedEvents", trace.EvictedEvents); writer.WriteEndObject(); writer.WriteEndObject();
         await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+    }
+    private static void WriteFlow(Utf8JsonWriter writer, TraceView trace, long id, int thread, long timestamp, string phase)
+    {
+        writer.WriteStartObject(); writer.WriteString("name", "Recorded causal handoff");
+        writer.WriteString("cat", "causality"); writer.WriteString("ph", phase); writer.WriteString("id", $"causal-{id}");
+        writer.WriteNumber("pid", 1); writer.WriteNumber("tid", thread);
+        writer.WriteNumber("ts", (timestamp - (double)trace.OriginTimestamp) * 1_000_000 / trace.Frequency);
+        if (phase == "f") writer.WriteString("bp", "e");
+        writer.WriteEndObject();
     }
 }
 
@@ -66,13 +93,15 @@ public static class TraceComparison
 {
     public static CostComparison[] Compare(AnalysisResult baseline, AnalysisResult current)
     {
-        var before = baseline.Costs.ToDictionary(row => (row.Name, row.Subsystem));
-        var after = current.Costs.ToDictionary(row => (row.Name, row.Subsystem));
+        // Builds have different MVIDs; comparison intentionally aggregates by displayed signature.
+        static Dictionary<(string Name, Subsystem Subsystem), (int Count, double SelfMs)> Aggregate(AnalysisResult result)
+            => result.Costs.GroupBy(row => (row.Name, row.Subsystem)).ToDictionary(g => g.Key, g => (g.Sum(r => r.Count), g.Sum(r => r.SelfMs)));
+        var before = Aggregate(baseline); var after = Aggregate(current);
         return before.Keys.Union(after.Keys).Select(key =>
         {
             before.TryGetValue(key, out var a); after.TryGetValue(key, out var b);
-            var av = a?.SelfMs ?? 0; var bv = b?.SelfMs ?? 0;
-            return new CostComparison(key.Name, key.Subsystem, a?.Count ?? 0, b?.Count ?? 0,
+            var av = a.SelfMs; var bv = b.SelfMs;
+            return new CostComparison(key.Name, key.Subsystem, a.Count, b.Count,
                 av, bv, bv - av, av == 0 ? null : (bv - av) / av * 100);
         }).OrderByDescending(row => row.DeltaMs).ToArray();
     }
