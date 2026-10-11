@@ -66,7 +66,7 @@ internal static class MethodRewriter
             if (h.FilterStart == oldTarget) h.FilterStart = newTarget;
         }
     }
-    public static void Wrap(ModuleDefinition module, MethodDefinition method, Subsystem subsystem)
+    public static void Wrap(ModuleDefinition module, MethodDefinition method, Subsystem subsystem, string site)
     {
         var body = method.Body; var il = body.GetILProcessor(); ExpandBranches(method);
         var originalStart = body.Instructions[0];
@@ -97,7 +97,7 @@ internal static class MethodRewriter
             !p.ParameterType.IsByReference && !p.ParameterType.IsPointer && !p.ParameterType.IsGenericParameter);
         var prelude = new[]
         {
-            Instruction.Create(OpCodes.Ldc_I4, (int)subsystem), Instruction.Create(OpCodes.Ldstr, method.FullName),
+            Instruction.Create(OpCodes.Ldc_I4, (int)subsystem), Instruction.Create(OpCodes.Ldstr, site),
             method.IsStatic ? Instruction.Create(OpCodes.Ldnull) : Instruction.Create(OpCodes.Ldarg_0),
             related is null ? Instruction.Create(OpCodes.Ldnull) : Instruction.Create(OpCodes.Ldarg, related),
             Instruction.Create(OpCodes.Call, module.ImportReference(typeof(Probe).GetMethod(nameof(Probe.Enter))!)),

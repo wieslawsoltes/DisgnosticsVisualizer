@@ -10,7 +10,7 @@ public sealed record WeaveOptions(string Directory)
     public bool Bootstrap { get; init; } = true;
 }
 public sealed record MethodReport(int Token, string Signature, string Category,
-    string Status, int NotificationSites = 0, string? Note = null);
+    string Status, int NotificationSites = 0, string? Note = null, DiagnosticsVisualizer.Core.SourceSite? Source = null);
 public sealed record AssemblyReport(string File, string OriginalSha256, string OutputSha256,
     string OriginalMvid, string OutputMvid, string Version, bool SignedIdentity,
     bool Bootstrapped, MethodReport[] Methods, string Status);
