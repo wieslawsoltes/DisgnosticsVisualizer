@@ -71,7 +71,7 @@ public sealed partial class WorkbenchView
             finally { connect.IsEnabled = true; }
         };
         actions.Children.Add(cancel); actions.Children.Add(connect); stack.Children.Add(actions);
-        ShowCard(stack, 560); Dispatcher.UIThread.Post(() => endpoint.Focus());
+        ShowCard(stack, 560); FocusOverlayInput(stack, endpoint);
     }
     private void RegisterCommands()
     {
@@ -107,9 +107,19 @@ public sealed partial class WorkbenchView
         };
         list.DoubleTapped += async (_, _) => await Execute();
         var panel = new Grid { RowDefinitions = new("Auto,*") }; panel.Children.Add(search); Grid.SetRow(list, 1); panel.Children.Add(list); Filter(); ShowCard(panel, 560);
-        // Focus immediately when attached; only defer until layout when the host requires it.
-        // The deferred callback must not steal focus after this palette has been closed.
-        if (!search.Focus()) Dispatcher.UIThread.Post(() => { if (search.IsEffectivelyVisible) search.Focus(); }, DispatcherPriority.Loaded);
+        FocusOverlayInput(panel, search);
+    }
+    private void FocusOverlayInput(Control content, TextBox input)
+    {
+        // A focused but untemplated TextBox cannot handle editing shortcuts yet.
+        // In the browser, an unhandled Ctrl+A can become a literal raw-text 'A'.
+        // Wait for the first layout and reject callbacks belonging to a closed card.
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (!_overlay.IsVisible || _overlay.Child is not Border card || !ReferenceEquals(card.Child, content)) return;
+            input.ApplyTemplate();
+            input.Focus();
+        }, DispatcherPriority.Loaded);
     }
     private void ShowCard(Control content, double width)
     {
