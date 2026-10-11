@@ -30,22 +30,7 @@ public static class TraceCodec
             previous = e;
         }
         w.Byte(block.Snapshot is null ? (byte)0 : (byte)1);
-        if (block.Snapshot is { } snapshot)
-        {
-            w.I64(snapshot.SelectedObject); w.Byte(snapshot.Truncated ? (byte)1 : (byte)0);
-            w.Count(snapshot.Nodes.Length, TraceLimits.MaxNodesPerSnapshot);
-            foreach (var n in snapshot.Nodes)
-            {
-                w.I64(n.Id); w.I64(n.VisualParent); w.I64(n.LogicalParent); w.I64(n.TemplatedParent);
-                w.Text(n.Type); w.Text(n.Name); w.Double(n.X); w.Double(n.Y); w.Double(n.Width); w.Double(n.Height);
-                w.Byte(n.Visible ? (byte)1 : (byte)0); w.Text(n.Classes);
-            }
-            w.Count(snapshot.Properties.Length, TraceLimits.MaxPropertiesPerSnapshot);
-            foreach (var p in snapshot.Properties)
-            { w.I64(p.ObjectId); w.Text(p.Name); w.Text(p.Kind); w.Text(p.Value); w.Text(p.Priority); w.Text(p.Source); }
-            w.Count(snapshot.Relations.Length, TraceLimits.MaxRelationsPerSnapshot);
-            foreach (var r in snapshot.Relations) { w.I64(r.Source); w.I64(r.Target); w.Text(r.Kind); w.Text(r.Detail); }
-        }
+        if (block.Snapshot is { } snapshot) SnapshotPayload.Write(w, snapshot);
         return WireEnvelope.Seal(FrameKind.Trace, w.Written);
     }
 
@@ -79,19 +64,7 @@ public static class TraceCodec
                 (int)thread, (int)name, subsystem, kind, data0, data1);
         }
         SnapshotData? snapshot = null;
-        if (r.Bool())
-        {
-            var selected = r.I64(); var truncated = r.Bool();
-            var nodes = new NodeSnapshot[r.Count(TraceLimits.MaxNodesPerSnapshot)];
-            for (var i = 0; i < nodes.Length; i++)
-                nodes[i] = new(r.I64(), r.I64(), r.I64(), r.I64(), r.Text(), r.Text(),
-                    r.Double(), r.Double(), r.Double(), r.Double(), r.Bool(), r.Text());
-            var properties = new PropertySnapshot[r.Count(TraceLimits.MaxPropertiesPerSnapshot)];
-            for (var i = 0; i < properties.Length; i++) properties[i] = new(r.I64(), r.Text(), r.Text(), r.Text(), r.Text(), r.Text());
-            var relations = new RelationSnapshot[r.Count(TraceLimits.MaxRelationsPerSnapshot)];
-            for (var i = 0; i < relations.Length; i++) relations[i] = new(r.I64(), r.I64(), r.Text(), r.Text());
-            snapshot = new(nodes, properties, relations, selected, truncated);
-        }
+        if (r.Bool()) snapshot = SnapshotPayload.Read(ref r);
         r.Finish();
         return new TraceBlock { SessionId = session, Sequence = sequence, Frequency = frequency,
             OriginTimestamp = origin, UtcStartTicks = utc, DroppedEvents = dropped, ProbeFaults = faults,

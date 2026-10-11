@@ -9,13 +9,15 @@ internal sealed class WireWriter
 {
     private readonly ArrayBufferWriter<byte> _buffer = new(4096);
     public ReadOnlySpan<byte> Written => _buffer.WrittenSpan;
-    public void Byte(byte value) { var s = _buffer.GetSpan(1); s[0] = value; _buffer.Advance(1); }
-    public void Bytes(ReadOnlySpan<byte> value) { value.CopyTo(_buffer.GetSpan(value.Length)); _buffer.Advance(value.Length); }
-    public void UInt(uint value) { var s = _buffer.GetSpan(4); BinaryPrimitives.WriteUInt32LittleEndian(s, value); _buffer.Advance(4); }
+    private void Reserve(int bytes)
+    { if (bytes < 0 || _buffer.WrittenCount > TraceLimits.MaxFrameBytes - WireEnvelope.HeaderBytes - 4 - bytes) throw new InvalidDataException("Frame too large."); }
+    public void Byte(byte value) { Reserve(1); var s = _buffer.GetSpan(1); s[0] = value; _buffer.Advance(1); }
+    public void Bytes(ReadOnlySpan<byte> value) { Reserve(value.Length); value.CopyTo(_buffer.GetSpan(value.Length)); _buffer.Advance(value.Length); }
+    public void UInt(uint value) { Reserve(4); var s = _buffer.GetSpan(4); BinaryPrimitives.WriteUInt32LittleEndian(s, value); _buffer.Advance(4); }
     public void Double(double value) => U64(unchecked((ulong)BitConverter.DoubleToInt64Bits(value)));
     public void U64(ulong value)
     {
-        var s = _buffer.GetSpan(10); var n = 0;
+        Reserve(10); var s = _buffer.GetSpan(10); var n = 0;
         while (value >= 128) { s[n++] = (byte)(value | 128); value >>= 7; }
         s[n++] = (byte)value; _buffer.Advance(n);
     }
@@ -29,7 +31,7 @@ internal sealed class WireWriter
     {
         var size = Encoding.UTF8.GetByteCount(text);
         Count(size, TraceLimits.MaxStringBytes);
-        var n = Encoding.UTF8.GetBytes(text.AsSpan(), _buffer.GetSpan(size)); _buffer.Advance(n);
+        Reserve(size); var n = Encoding.UTF8.GetBytes(text.AsSpan(), _buffer.GetSpan(size)); _buffer.Advance(n);
     }
 }
 

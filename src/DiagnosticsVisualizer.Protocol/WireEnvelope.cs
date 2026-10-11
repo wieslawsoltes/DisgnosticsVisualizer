@@ -3,7 +3,7 @@ using DiagnosticsVisualizer.Core;
 
 namespace DiagnosticsVisualizer.Protocol;
 
-public enum FrameKind : byte { Trace = 1, Command = 2 }
+public enum FrameKind : byte { Trace = 1, Command = 2, SnapshotDelta = 3 }
 
 /// <summary>Little-endian 12-byte header, bounded payload, CRC32 trailer.</summary>
 public static class WireEnvelope
@@ -35,7 +35,7 @@ public static class WireEnvelope
     public static int GetFrameLength(ReadOnlySpan<byte> header)
     {
         if (header.Length < HeaderBytes || BinaryPrimitives.ReadUInt32LittleEndian(header) != Magic ||
-            header[4] != 1 || header[6] != 0 || header[7] != 0 || header[5] is < 1 or > 2)
+            header[4] != 1 || header[6] != 0 || header[7] != 0 || header[5] is < 1 or > 3)
             throw new InvalidDataException("Unsupported trace header/version.");
         var length = BinaryPrimitives.ReadInt32LittleEndian(header[8..]);
         if (length < HeaderBytes + 4 || length > TraceLimits.MaxFrameBytes)

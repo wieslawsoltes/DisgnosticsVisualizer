@@ -96,13 +96,14 @@ public sealed partial class WorkbenchModel : INotifyPropertyChanged, IAsyncDispo
     }
     private async Task ReceiveAsync(IFrameConnection connection, TraceStore store, int generation, CancellationToken cancellationToken)
     {
+        var decoder = new TraceStreamDecoder();
         try
         {
             while (await connection.ReceiveAsync(cancellationToken).ConfigureAwait(false) is { } frame)
             {
-                if (WireEnvelope.GetKind(frame) == FrameKind.Trace)
+                if (WireEnvelope.GetKind(frame) is FrameKind.Trace or FrameKind.SnapshotDelta)
                 {
-                    var block = TraceCodec.Decode(frame); store.Add(block);
+                    var block = decoder.Decode(frame); store.Add(block);
                     if (block.Events.Length > 0 || block.Snapshot is not null || block.Recording != Recording || block.DroppedEvents != Trace?.DroppedEvents)
                         Interlocked.Exchange(ref _dirty, 1);
                 }

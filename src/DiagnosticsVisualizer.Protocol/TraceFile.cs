@@ -22,7 +22,7 @@ public static class CommandCodec
     }
 }
 
-public sealed record TraceReadResult(long Blocks, long Events, bool TruncatedTail);
+public sealed record TraceReadResult(long Blocks, long Events, bool TruncatedTail, long DeltaFrames = 0);
 
 public static class TraceFile
 {
@@ -31,14 +31,14 @@ public static class TraceFile
         Func<TraceBlock, ValueTask> consume, bool recoverTruncatedTail = true,
         CancellationToken cancellationToken = default)
     {
-        long blocks = 0, events = 0;
+        long blocks = 0, events = 0; var decoder = new TraceStreamDecoder();
         while (true)
         {
             byte[]? frame;
             try { frame = await WireEnvelope.ReadAsync(stream, cancellationToken).ConfigureAwait(false); }
-            catch (EndOfStreamException) when (recoverTruncatedTail) { return new(blocks, events, true); }
-            if (frame is null) return new(blocks, events, false);
-            var block = TraceCodec.Decode(frame);
+            catch (EndOfStreamException) when (recoverTruncatedTail) { return new(blocks, events, true, decoder.DeltaFrames); }
+            if (frame is null) return new(blocks, events, false, decoder.DeltaFrames);
+            var block = decoder.Decode(frame);
             await consume(block).ConfigureAwait(false);
             blocks++; events += block.Events.Length;
         }

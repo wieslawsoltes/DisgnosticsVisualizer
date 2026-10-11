@@ -10,11 +10,12 @@ if (args.Length == 3 && args[0] == "--remote")
     var token = Environment.GetEnvironmentVariable("AVTRACE_TOKEN") ?? throw new ArgumentException("Set AVTRACE_TOKEN.");
     await using var connection = await WebSocketFrameConnection.ConnectAsync(new(args[1]), token, false, timeout.Token);
     var liveStore = new TraceStore(1_000_000); long blocks = 0; var requested = false; var acknowledged = false;
+    var decoder = new TraceStreamDecoder();
     while (await connection.ReceiveAsync(timeout.Token) is { } frame)
     {
-        if (WireEnvelope.GetKind(frame) == FrameKind.Trace)
+        if (WireEnvelope.GetKind(frame) is FrameKind.Trace or FrameKind.SnapshotDelta)
         {
-            liveStore.Add(TraceCodec.Decode(frame)); blocks++;
+            liveStore.Add(decoder.Decode(frame)); blocks++;
             if (!requested)
             {
                 await connection.SendAsync(CommandCodec.Encode(new(42, CommandKind.RequestSnapshot)), timeout.Token);
@@ -29,7 +30,7 @@ if (args.Length == 3 && args[0] == "--remote")
         }
     }
     var live = liveStore.GetView();
-    var evidence = new { Blocks = blocks, Events = live.Events.Length, Nodes = live.Snapshot.Nodes.Length,
+    var evidence = new { decoder.DeltaFrames, Blocks = blocks, Events = live.Events.Length, Nodes = live.Snapshot.Nodes.Length,
         live.ProbeFaults, live.DroppedEvents, live.MissingBlocks, CommandAcknowledged = acknowledged };
     await File.WriteAllTextAsync(args[2], JsonSerializer.Serialize(evidence, new JsonSerializerOptions { WriteIndented = true }));
     if (live.Events.Length == 0 || live.Snapshot.Nodes.Length == 0 || live.ProbeFaults != 0 || !acknowledged)
@@ -45,7 +46,7 @@ var view = store.GetView();
 var observed = view.Events.GroupBy(e => e.Subsystem).ToDictionary(g => g.Key.ToString(), g => g.Count());
 var report = new
 {
-    read.Blocks, read.Events, read.TruncatedTail, view.DroppedEvents, view.ProbeFaults,
+    read.Blocks, read.Events, read.TruncatedTail, read.DeltaFrames, view.DroppedEvents, view.ProbeFaults,
     view.MetadataDrops, view.MissingBlocks,
     Nodes = view.Snapshot.Nodes.Length, Properties = view.Snapshot.Properties.Length,
     Subsystems = observed, Findings = TraceAnalyzer.Analyze(view).Findings

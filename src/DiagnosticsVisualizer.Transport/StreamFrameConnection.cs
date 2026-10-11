@@ -9,6 +9,7 @@ namespace DiagnosticsVisualizer.Transport;
 
 public sealed class StreamFrameConnection(Stream stream, IDisposable? owner = null) : IFrameConnection
 {
+    public ProtocolFeatures Features { get; set; }
     private readonly SemaphoreSlim _sendGate = new(1, 1);
     private int _disposed;
     public async ValueTask SendAsync(ReadOnlyMemory<byte> frame, CancellationToken cancellationToken = default)

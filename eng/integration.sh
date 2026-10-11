@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-version="${1:-0.1.0-alpha.3}"
+version="${1:-0.1.0-alpha.4}"
 root="$PWD"
 mkdir -p artifacts/integration
 sample=tests/DiagnosticsVisualizer.Sample
 # Startup deep profiling deliberately exercises large synchronous bursts.
+export AVTRACE_SNAPSHOT_INTERVAL_MS=250
 export AVTRACE_EVENTS_PER_THREAD=65536
 export AVTRACE_MAX_THREADS=16
 export AVTRACE_SAMPLE_EVERY=1
@@ -54,12 +55,12 @@ root = pathlib.Path('artifacts/integration')
 with urllib.request.urlopen('http://127.0.0.1:4317/health', timeout=5) as response:
     health = json.load(response)
 (root / 'network-report.json').write_text(json.dumps(health, indent=2))
-assert health['udpFrames'] > 0, health
+assert health['udpFrames'] > 0 and health['snapshotDeltaFrames'] > 0, health
 assert health['udpRejectedPackets'] == 0, health
 # This reference workload must retain every event locally; UDP delivery remains best-effort.
 for name in ('capture-report.json', 'remote-report.json'):
     report = json.loads((root / name).read_text())
-    assert report['DroppedEvents'] == 0 and report['ProbeFaults'] == 0, (name, report)
+    assert report['DroppedEvents'] == 0 and report['ProbeFaults'] == 0 and report['DeltaFrames'] > 0, (name, report)
 print(json.dumps(health))
 PY
 kill "$collector_pid"

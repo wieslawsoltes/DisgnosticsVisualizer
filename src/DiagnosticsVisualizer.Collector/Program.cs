@@ -47,7 +47,7 @@ try
     app.MapGet("/health", (CaptureHub hub) => Results.Json(new
     {
         status = "ok", sourceConnected = hub.Connected, viewers = hub.Viewers,
-        frames = hub.Frames, udpFrames = hub.UdpFrames,
+        frames = hub.Frames, udpFrames = hub.UdpFrames, snapshotDeltaFrames = hub.SnapshotDeltaFrames,
         udpRejectedPackets = hub.UdpRejectedPackets, udpExpiredFrames = hub.UdpExpiredFrames
     }));
     app.Map("/trace", async (HttpContext context, CaptureHub hub, ILoggerFactory loggerFactory) =>
