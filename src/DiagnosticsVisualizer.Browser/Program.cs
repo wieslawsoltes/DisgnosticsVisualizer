@@ -68,6 +68,8 @@ public static partial class Program
             routedDispatches = visuals.OfType<RoutedEventsControl>().FirstOrDefault()?.DispatchCount ?? 0,
             canNavigateBack = model?.CanNavigateBack == true, canNavigateForward = model?.CanNavigateForward == true,
             resourceLookups = visuals.OfType<ResourceLookupsControl>().FirstOrDefault()?.LookupCount ?? 0,
+            bindingOperations = visuals.OfType<BindingOperationsControl>().FirstOrDefault()?.OperationCount ?? 0,
+            bindingHistoryVisible = visuals.OfType<BindingOperationsControl>().Where(control => control.IsEffectivelyVisible).Any(control => control.GetVisualDescendants().OfType<CheckBox>().Any(check => check.Content as string == "Expression history" && check.IsChecked == true)),
             styleHistoryVisible = visuals.OfType<DataGrid>().Any(grid => AutomationProperties.GetName(grid) == "Related style activation history" && grid.IsEffectivelyVisible),
             styleEvaluations = visuals.OfType<StyleEvaluationsControl>().FirstOrDefault()?.EvaluationCount ?? 0,
             dispatcherOperations = visuals.OfType<DispatcherOperationsControl>().FirstOrDefault()?.OperationCount ?? 0,

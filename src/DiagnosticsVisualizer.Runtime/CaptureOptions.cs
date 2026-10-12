@@ -22,6 +22,8 @@ public sealed record CaptureOptions
     public bool TrackResourceLookups { get; init; }
     /// <summary>Opt-in original selector results, attachment attempts and frame activity; never re-evaluates selectors.</summary>
     public bool TrackStyleEvaluations { get; init; }
+    /// <summary>Opt-in binding invocation, original publication/delivery and dynamic-resource lifecycle observations.</summary>
+    public bool TrackBindingOperations { get; init; }
     public int SampleEvery { get; init; } = 1;
     public ulong SubsystemMask { get; init; } = ulong.MaxValue;
     /// <summary>Parse bounded startup settings once, never on a producer's hot path.</summary>
@@ -66,7 +68,8 @@ public sealed record CaptureOptions
             TrackDispatcherOperations = Boolean("AVTRACE_DISPATCHER_OPERATIONS"),
             TrackRoutedEvents = Boolean("AVTRACE_ROUTED_EVENTS"),
             TrackResourceLookups = Boolean("AVTRACE_RESOURCE_LOOKUPS"),
-            TrackStyleEvaluations = Boolean("AVTRACE_STYLE_EVALUATIONS")
+            TrackStyleEvaluations = Boolean("AVTRACE_STYLE_EVALUATIONS"),
+            TrackBindingOperations = Boolean("AVTRACE_BINDING_OPERATIONS")
         };
         options.Validate(); return options;
     }
