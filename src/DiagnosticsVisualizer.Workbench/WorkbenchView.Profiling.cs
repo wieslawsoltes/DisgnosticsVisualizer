@@ -116,6 +116,7 @@ public sealed partial class WorkbenchView
             ("routed", "Routed event propagation", "M2 2H6V6H2ZM10 10H14V14H10ZM6 4H12V10M2 12H7"),
             ("health", "Capture health", "M1 8H4L6 3L9 13L11 8H15") }) left.Children.Add(PanelButton(id, title, path));
         foreach (var (id, title, path) in new[] {
+            ("resources", "Recorded resource lookups", "M2 2H14V6H2ZM2 10H14V14H2ZM5 6V10M11 6V10"),
             ("properties", "Properties and resources", "M2 3H14M2 8H14M2 13H14M5 1V5M11 6V10M6 11V15"),
             ("async", "Async operations", "M1 8H4L6 3L10 13L12 8H15M3 2V5M13 11V14"),
             ("dispatcher", "Dispatcher queue", "M1 3H7M1 8H7M1 13H7M10 3H15V13H10ZM12 5V10"),

@@ -30,6 +30,12 @@ public static class WorkbenchStyles
         { Source = new Uri("avares://Dock.Avalonia.Themes.Fluent/Presets/Ide/RiderDark.axaml") });
         // Document tab templates have a specific foreground token independent of the generic Rider tab palette.
         control.Resources["DockDocumentTabSelectedForegroundBrush"] = Brushes.White;
+        // Keep editor, active tab and chrome states coherent within every detached diagnostics scope.
+        control.Resources["DockTabSelectedForegroundBrush"] = new SolidColorBrush(Color.Parse("#DFE1E5"));
+        control.Resources["DockTabActiveBackgroundBrush"] = new SolidColorBrush(Color.Parse("#1F2124"));
+        control.Resources["DockTabHoverBackgroundBrush"] = new SolidColorBrush(Color.Parse("#383B40"));
+        control.Resources["DockSurfaceHeaderActiveBrush"] = new SolidColorBrush(Color.Parse("#303D51"));
+        control.Resources["DockBorderStrongBrush"] = new SolidColorBrush(Color.Parse("#51555C"));
         // DataGrid templates consume these semantic tokens rather than the row's Background.
         control.Resources["DataGridRowSelectedBackgroundBrush"] = new SolidColorBrush(Color.Parse("#2E4365"));
         control.Resources["DataGridRowSelectedHoveredBackgroundBrush"] = new SolidColorBrush(Color.Parse("#3B5278"));

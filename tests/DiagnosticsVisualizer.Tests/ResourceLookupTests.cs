@@ -147,7 +147,7 @@ public sealed class ResourceLookupTests
         using var replacement = Probe.Start(new() { TrackResourceLookups = true, FlowExecutionContext = true });
         pending.Returned(true, this); pending.Dispose();
         using (var scope = Probe.BeginResourceLookup("new", this, "Key", null)) scope.Returned(false, null);
-        var root = Assert.Single(new ResourceLookupIndex(View(replacement.Drain())).Roots;
+        var root = Assert.Single(new ResourceLookupIndex(View(replacement.Drain())).Roots);
         Assert.Equal("new", root.Name); Assert.Equal(0, root.ParentLookupId); Assert.Equal(0, root.Completion!.Value.ParentId);
         Assert.Equal(0, replacement.ProbeFaults);
     }
