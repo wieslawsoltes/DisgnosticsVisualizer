@@ -101,6 +101,10 @@ public sealed partial class WorkloadWindow : Window
         await ExerciseAsync();
         await ExerciseDispatcherAsync();
         ExerciseStyling();
+        var properties = PropertySubject.Exercise();
+        if (properties != "10|3|7|6|4|7|9|Original subscriber failure|property")
+            throw new InvalidOperationException("Property mutation behavior changed: " + properties);
+        Console.WriteLine("PROPERTY_WORKLOAD_OK " + properties);
     }
     private void ExerciseStyling()
     {

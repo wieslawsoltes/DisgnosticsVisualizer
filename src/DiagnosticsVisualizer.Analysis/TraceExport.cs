@@ -78,7 +78,7 @@ public static class TraceExport
             writer.WriteNumber("pid", 1); writer.WriteNumber("tid", thread); writer.WriteStartObject("args");
             writer.WriteString("name", $"Managed thread {thread}"); writer.WriteEndObject(); writer.WriteEndObject();
         }
-        var resourceLookups = new ResourceLookupIndex(trace); var styles = new StyleEvaluationIndex(trace); var bindings = new BindingOperationIndex(trace);
+        var propertyOperations = new PropertyOperationIndex(trace); var resourceLookups = new ResourceLookupIndex(trace); var styles = new StyleEvaluationIndex(trace); var bindings = new BindingOperationIndex(trace);
         var count = 0;
         foreach (var e in trace.Events)
         {
@@ -114,6 +114,16 @@ public static class TraceExport
                 writer.WriteString("styleTargetId", style.TargetId.ToString()); writer.WriteString("styleContextId", style.ContextId.ToString());
                 writer.WriteString("styleActivatorId", style.ActivatorId.ToString()); writer.WriteString("styleInput", style.InputDescription);
                 if (style.Changed is { } changed) writer.WriteBoolean("styleActivityChanged", changed); writer.WriteBoolean("styleCaptureIncomplete", style.CaptureIncomplete);
+            }
+            if (PropertyOperationEvent.IsValid(e) && propertyOperations.Find(PropertyOperationEvent.OperationId(e)) is { } property)
+            {
+                writer.WriteString("propertyOperationId", property.Id.ToString()); writer.WriteString("propertyOperation", property.Category);
+                writer.WriteString("propertyName", property.Property); writer.WriteString("propertyTargetId", property.TargetId.ToString());
+                writer.WriteString("propertyId", property.PropertyId.ToString()); writer.WriteString("propertyParticipantId", property.ParticipantId.ToString());
+                writer.WriteString("propertyOutcome", property.Status); writer.WriteString("propertyPriority", property.PriorityText);
+                writer.WriteString("propertyOldKind", property.OldValue.Kind.ToString()); writer.WriteString("propertyOldBits", property.OldValue.Bits.ToString());
+                writer.WriteString("propertyNewKind", property.NewValue.Kind.ToString()); writer.WriteString("propertyNewBits", property.NewValue.Bits.ToString());
+                writer.WriteString("propertyOldObjectId", property.OldValue.ObjectId.ToString()); writer.WriteString("propertyNewObjectId", property.NewValue.ObjectId.ToString());
             }
             if (BindingOperationEvent.IsValid(e) && bindings.Find(BindingOperationEvent.OperationId(e)) is { } binding)
             {

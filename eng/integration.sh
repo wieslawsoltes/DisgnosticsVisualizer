@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-version="${1:-0.1.0-alpha.12}"
+version="${1:-0.1.0-alpha.13}"
 root="$PWD"
 mkdir -p artifacts/integration
 sample=tests/DiagnosticsVisualizer.Sample
 # Startup deep profiling deliberately exercises large synchronous bursts.
 export AVTRACE_SNAPSHOT_INTERVAL_MS=250
-export AVTRACE_EVENTS_PER_THREAD=131072
+export AVTRACE_EVENTS_PER_THREAD=262144
 export AVTRACE_MAX_THREADS=16
 export AVTRACE_SAMPLE_EVERY=1
 export AVTRACE_BINDING_OPERATIONS=1
+export AVTRACE_PROPERTY_OPERATIONS=1
+export AVTRACE_PROPERTY_SCALARS=1
 export AVTRACE_ROUTED_EVENTS=1
 export AVTRACE_RESOURCE_LOOKUPS=1
 export AVTRACE_STYLE_EVALUATIONS=1
@@ -36,6 +38,7 @@ check_workload() {
     'DISPATCHER_WORKLOAD_OK completed=2 aborted=0 fault=observed' \
     'RESOURCE_LOOKUP_WORKLOAD_OK merged=higher theme=dark lazy=1 null=found missing=false opaque=safe fault=preserved' \
     'STYLE_WORKLOAD_OK active=0.25 local=0.8 cleared=0.25 inactive=1' \
+    'PROPERTY_WORKLOAD_OK 10|3|7|6|4|7|9|Original subscriber failure|property' \
     'BINDING_WORKLOAD_OK' 'BINDING_DISPATCH_OK' 'BINDING_THEME_OK'; do
     grep -q "$expected" "$1"
   done

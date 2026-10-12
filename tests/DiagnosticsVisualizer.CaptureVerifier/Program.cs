@@ -30,7 +30,7 @@ if (args.Length == 3 && args[0] == "--remote")
     var causalNotifications = CountAsyncNotifications(live); var lifetimes = VerifiedLifetimes(live);
     var investigation = VerifyInvestigation(live); var resourceLookups = VerifyResourceLookups(live);
     var inspection = ReferenceInspection(live); var candidates = VerifyResourceMetadata(inspection);
-    var evidence = new { Bindings = BindingCaptureChecks.Verify(live), Styling = VerifyStyling(live), ResourceLookups = resourceLookups, Investigation = investigation, decoder.DeltaFrames, Blocks = blocks, Events = live.Events.Length, Nodes = inspection.Snapshot.Nodes.Length, LatestSnapshotNodes = live.Snapshot.Nodes.Length,
+    var evidence = new { PropertyHistory = PropertyCaptureChecks.Verify(live), Bindings = BindingCaptureChecks.Verify(live), Styling = VerifyStyling(live), ResourceLookups = resourceLookups, Investigation = investigation, decoder.DeltaFrames, Blocks = blocks, Events = live.Events.Length, Nodes = inspection.Snapshot.Nodes.Length, LatestSnapshotNodes = live.Snapshot.Nodes.Length,
         ResourceCandidates = candidates, AsyncLifetimes = lifetimes, AsyncCausalNotifications = causalNotifications, SourceSites = live.SourceSites.Count, MappedSites = live.SourceSites.Values.Count(s => s.Line > 0),
         live.ProbeFaults, live.DroppedEvents, live.MissingBlocks, CommandAcknowledged = acknowledged };
     await File.WriteAllTextAsync(args[2], JsonSerializer.Serialize(evidence, new JsonSerializerOptions { WriteIndented = true }));
@@ -47,7 +47,7 @@ var inspectionView = ReferenceInspection(view); var resourceCandidates = VerifyR
 var observed = view.Events.GroupBy(e => e.Subsystem).ToDictionary(g => g.Key.ToString(), g => g.Count());
 var report = new
 {
-    Bindings = BindingCaptureChecks.Verify(view), Styling = VerifyStyling(view), ResourceLookups = resourceLookupReport, Investigation = investigationReport, read.Blocks, read.Events, read.TruncatedTail, read.DeltaFrames, view.DroppedEvents, view.ProbeFaults,
+    PropertyHistory = PropertyCaptureChecks.Verify(view), Bindings = BindingCaptureChecks.Verify(view), Styling = VerifyStyling(view), ResourceLookups = resourceLookupReport, Investigation = investigationReport, read.Blocks, read.Events, read.TruncatedTail, read.DeltaFrames, view.DroppedEvents, view.ProbeFaults,
     view.MetadataDrops, view.MissingBlocks, SourceSites = view.SourceSites.Count, MappedSites = view.SourceSites.Values.Count(s => s.Line > 0), AsyncKickoffSites = view.SourceSites.Values.Count(s => s.AsyncKickoff),
     ResourceCandidates = resourceCandidates, AsyncLifetimes = completedLifetimes, AsyncCausalNotifications = causalCount,
     Nodes = inspectionView.Snapshot.Nodes.Length, Properties = inspectionView.Snapshot.Properties.Length, LatestSnapshotNodes = view.Snapshot.Nodes.Length,

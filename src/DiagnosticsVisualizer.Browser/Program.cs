@@ -55,6 +55,8 @@ public static partial class Program
         var eventGrid = visuals.OfType<DataGrid>().FirstOrDefault(grid => grid.Name == "EventsGrid");
         return JsonSerializer.Serialize(new
         {
+            propertyOperations = model?.Analysis?.PropertyOperations?.Calls.Length ?? 0,
+            propertyHistoryVisible = visuals.OfType<PropertyHistoryControl>().Any(c => c.IsEffectivelyVisible),
             ready = view is not null, events = model?.Trace?.Events.Length ?? 0,
             nodes = model?.Trace?.Snapshot.Nodes.Length ?? 0,
             findings = model?.Analysis?.Findings.Length ?? 0, visualCount = visuals.Length,
