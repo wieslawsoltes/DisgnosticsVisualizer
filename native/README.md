@@ -1,11 +1,15 @@
-# Native runtime profiling
+# Native CLR attachment (work in progress)
 
-Native attachment and method-level ReJIT capture are being implemented on this branch.
-The native SDK is pinned to dotnet/runtime 60629d14374c56f1cb51819049ad1fa529307f8d
-(.NET 10.0.0), under its MIT license. Public SDK archives contain headers and test
-support sources only, not runner credentials or the runtime binaries.
+Opt-in late attachment to a same-user already running .NET process through the public DiagnosticsClient and CLR profiling interfaces. The target has no startup profiler flags or application diagnostics references. Select exact methods, request ReJIT plus affected inliners, and record native method lifetimes to a bounded binary file without modifying target assemblies on disk.
 
-This is separate from build-time Avalonia semantic weaving. Runtime attachment
-must be explicitly requested for a process the caller is authorized to inspect.
-A runtime can reject attachment; existing frames and inlined calls cannot be
-claimed as newly observed merely because a ReJIT request was accepted.
+The native callback base and IL list rewriter are from the MIT-licensed .NET Foundation runtime SDK, pinned at `60629d14374c56f1cb51819049ad1fa529307f8d`. The build verifies source hashes and extends a **build-directory copy** of the sample rewriter with local-signature/outer-finally editing. The SDK checkout and Avalonia sources remain unchanged. Dependency attribution accompanies redistributed binaries.
+
+Build with `cmake -S native -B artifacts/native-build -DRUNTIME_SDK_ROOT=<pinned SDK checkout>` then `cmake --build artifacts/native-build --config Release`. Build `tools/NativeCapture`, then invoke `NativeCapture attach <pid> <library> <new-output.dvntrace> <duration-ms> 'Assembly!Namespace.Type::Method'`. Specify 1–64 exact method names; overloads with that name are selected and distinguished by their original MethodDef tokens. Output must not exist. Paths refer to the target machine/namespace. Attach permission and diagnostics availability are runtime/OS requirements.
+
+The added outer finally preserves original generic/byref returns and original exception/filter/finally behavior; native spans end on normal return or exceptional unwind without observing exception payloads. Target arguments and managed object identities are not captured. Inliner recompilation is requested using `RequestReJITWithInliners`; existing active invocations need not switch versions until their next call. Source identity is the original assembly/MVID/token, not an exact original sequence point. Original instruction maps are supplied to the CLR.
+
+Capture stops after a bounded duration (100 ms to one hour). File capacity is 128 MiB, with 64 lifetime thread slots, 4,096 records per per-thread ring, 256 nested selected methods per thread, and 4,096 selected definitions. Overflows are counted, never silent. Method selection and per-method request/instrumentation/compilation results are recorded separately. A successful AttachProfiler call does not prove any selected method compiled or executed. Tail-call/jmp and unsupported/oversized signatures/bodies are explicitly rejected. The sample profile is not a universal overhead guarantee.
+
+The profiler's writer runs on its own CLR-initialized native worker, never in a JIT callback. Hot callbacks avoid managed execution and preserve native last-error state. Native storage and the loaded library remain valid until process exit because already compiled calli sites may outlive capture. Stopping capture is **not** unloading or detaching the profiler; disabled probes retain their branch/call overhead. No other installed profiler is replaced.
+
+This branch is being validated. Raw capture import/workbench integration follows before release. Native capture currently supplies selected synchronous method lifetimes and metadata, not the managed agent's Avalonia object trees, setter values, asynchronous logical lifetime, GPU timestamps or full custom-scheduler causality. Do not interpret elapsed spans as CPU utilization.

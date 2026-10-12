@@ -57,6 +57,11 @@ public sealed class CaptureSession : IDisposable
         var type = value.GetType(); _objects[id] = new(id, type.FullName ?? type.Name, $"{type.Name} #{id}");
         _references[id] = new(value); return new(id);
     }
+    internal void LabelProperty(long id, string? name)
+    {
+        if (id > 0 && !string.IsNullOrEmpty(name) && name.Length <= 512 && _objects.TryGetValue(id, out var info) && info.Display != name)
+            _objects[id] = info with { Display = name };
+    }
     public object? ResolveObject(long id) => _references.TryGetValue(id, out var weak) && weak.TryGetTarget(out var value) ? value : null;
     internal int Intern(CaptureWriter writer, string name)
     {

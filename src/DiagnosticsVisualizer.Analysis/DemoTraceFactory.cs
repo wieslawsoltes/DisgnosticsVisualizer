@@ -171,6 +171,7 @@ public static partial class DemoTraceFactory
         }
         objects = [..objects, new(113, "SyntheticSelector", "Demonstration selector"), new(114, "SyntheticActivator", "Demonstration activator"), new(115, "SyntheticStyleFrame", "Demonstration frame")];
         AddBindingExample(events, ref id, ref symbols, ref objects);
+        AddPropertyExample(events, ref id, ref symbols, ref objects);
         var blocks = new List<TraceBlock>(); var chunks = events.Chunk(2048).ToArray();
         for (var i = 0; i < chunks.Length; i++) blocks.Add(new()
         {

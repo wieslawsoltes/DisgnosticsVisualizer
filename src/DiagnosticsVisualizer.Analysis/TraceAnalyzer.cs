@@ -7,6 +7,7 @@ public sealed record CostRow(string Name, Subsystem Subsystem, int Count, double
 public sealed record CausalEdge(long Source, long Target, string Kind, bool Inferred = false);
 public sealed record AnalysisResult(CostRow[] Costs, Finding[] Findings, CausalEdge[] Edges)
 {
+    public PropertyOperationIndex? PropertyOperations { get; init; }
     public BindingOperationIndex? BindingOperations { get; init; }
     public RoutedDispatch[] RoutedDispatches { get; init; } = [];
     public ResourceLookupIndex? ResourceLookups { get; init; }
@@ -70,7 +71,7 @@ public static class TraceAnalyzer
         if (trace.DroppedEvents != 0 || trace.MissingBlocks != 0 || trace.MetadataDrops != 0 || trace.EvictedEvents != 0)
             findings.Insert(0, new("Warning", "Capture is incomplete", $"{trace.DroppedEvents} dropped events, {trace.MissingBlocks} missing batches, {trace.MetadataDrops} metadata drops, {trace.EvictedEvents} viewer evictions. Absence of an event is not evidence it did not happen.", 0, 0));
         if (trace.ProbeFaults > 0) findings.Insert(0, new("Error", "Instrumentation faults", $"{trace.ProbeFaults} probe faults were contained. Review the weaving manifest and compatibility report.", 0, 0));
-        return new(costs, findings.Take(2000).ToArray(), edges.ToArray()) { BindingOperations = new(trace), ResourceLookups = new(trace), RoutedDispatches = global::DiagnosticsVisualizer.Analysis.RoutedDispatches.Analyze(trace), StyleEvaluations = new(trace), XamlSources = new(trace), DispatcherOperations = dispatcher, AsyncOperations = global::DiagnosticsVisualizer.Analysis.AsyncOperations.Analyze(trace) };
+        return new(costs, findings.Take(2000).ToArray(), edges.ToArray()) { PropertyOperations = new(trace), BindingOperations = new(trace), ResourceLookups = new(trace), RoutedDispatches = global::DiagnosticsVisualizer.Analysis.RoutedDispatches.Analyze(trace), StyleEvaluations = new(trace), XamlSources = new(trace), DispatcherOperations = dispatcher, AsyncOperations = global::DiagnosticsVisualizer.Analysis.AsyncOperations.Analyze(trace) };
     }
     private static long CoveredDuration(TraceEvent parent, List<TraceEvent>? children)
     {

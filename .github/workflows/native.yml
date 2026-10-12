@@ -1,19 +1,24 @@
-name: Native runtime profiler
+name: Native CLR attachment
 on:
-  pull_request:
-    paths: ['native/**', 'src/DiagnosticsVisualizer.Attach/**', 'tests/DiagnosticsVisualizer.NativeTests/**', '.github/workflows/native.yml']
   push:
     branches: [main]
-    paths: ['native/**', 'src/DiagnosticsVisualizer.Attach/**', 'tests/DiagnosticsVisualizer.NativeTests/**', '.github/workflows/native.yml']
+    paths: ['native/**', 'tools/NativeCapture/**', 'tests/DiagnosticsVisualizer.NativeFixture/**', '.github/workflows/native.yml']
+  pull_request:
+    paths: ['native/**', 'tools/NativeCapture/**', 'tests/DiagnosticsVisualizer.NativeFixture/**', '.github/workflows/native.yml']
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
   native:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Obtain pinned public runtime SDK headers
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           repository: dotnet/runtime
           ref: 60629d14374c56f1cb51819049ad1fa529307f8d
@@ -22,13 +27,45 @@ jobs:
             src/coreclr/inc
             src/coreclr/pal/inc
             src/coreclr/pal/prebuilt/inc
+            src/native/minipal
             src/tests/profiler/native
-      - name: Retain exact public SDK for offline native validation
-        run: |
-          mkdir -p artifacts/native
-          git -C artifacts/runtime-sdk archive --format=tar.gz HEAD -- LICENSE.TXT src/coreclr/inc src/coreclr/pal/inc src/coreclr/pal/prebuilt/inc src/tests/profiler/native > artifacts/native/runtime-sdk.tar.gz
-      - uses: actions/upload-artifact@v4
+            LICENSE.TXT
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-dotnet@v4
         with:
-          name: pinned-native-runtime-sdk
-          path: artifacts/native/runtime-sdk.tar.gz
-          retention-days: 3
+          dotnet-version: 10.0.x
+      - name: Compile native profiler against pinned public SDK
+        shell: bash
+        run: |
+          cmake -S native -B artifacts/native-build -DCMAKE_BUILD_TYPE=Release -DRUNTIME_SDK_ROOT="$PWD/artifacts/runtime-sdk"
+          cmake --build artifacts/native-build --config Release --parallel 2
+      - name: Build attach client and unmodified target
+        shell: bash
+        run: |
+          dotnet build tools/NativeCapture -c Release
+          dotnet build tests/DiagnosticsVisualizer.NativeFixture -c Release
+      - name: Attach to already running CLR and validate rewritten behavior
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == Windows ]]; then LIB="$PWD/artifacts/native-build/Release/DiagnosticsVisualizerProfiler.dll";
+          elif [[ "$RUNNER_OS" == macOS ]]; then LIB="$PWD/artifacts/native-build/libDiagnosticsVisualizerProfiler.dylib";
+          else LIB="$PWD/artifacts/native-build/libDiagnosticsVisualizerProfiler.so"; fi
+          python native/smoke.py "$LIB"
+      - name: Stage native redistributable with dependency attribution
+        if: success()
+        shell: bash
+        run: |
+          mkdir -p artifacts/native-package
+          find artifacts/native-build -type f \( -name '*DiagnosticsVisualizerProfiler.dll' -o -name '*DiagnosticsVisualizerProfiler.so' -o -name '*DiagnosticsVisualizerProfiler.dylib' \) -exec cp {} artifacts/native-package/ \;
+          cp native/README.md artifacts/native-package/
+          cp artifacts/runtime-sdk/LICENSE.TXT artifacts/native-package/DOTNET-LICENSE.txt
+          cp LICENSE artifacts/native-package/LICENSE.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-evidence-${{ matrix.os }}
+          path: |
+            artifacts/native/*.json
+            artifacts/native/*.log
+            artifacts/native-package/
+          retention-days: 14
