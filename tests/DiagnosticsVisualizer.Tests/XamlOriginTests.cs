@@ -51,10 +51,8 @@ public sealed class XamlOriginTests
     [Fact] public void DisabledOriginsStayAllocationFreeAndDoNotClaimMissingObjects()
     {
         using var session = Probe.Start(); var target = new object();
-        Probe.XamlObject(target, "disabled", (int)SourceMappingKind.XamlConstruction);
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 10000; i++) Probe.XamlObject(target, "disabled", (int)SourceMappingKind.XamlConstruction);
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        var allocated = AllocationMeasurement.Measure(count =>
+        { for (var i = 0; i < count; i++) Probe.XamlObject(target, "disabled", (int)SourceMappingKind.XamlConstruction); });
         Assert.Equal(0, allocated); var store = new TraceStore(); store.Add(session.Drain());
         Assert.Null(new XamlSourceIndex(store.GetView()).Find(42)); Assert.Empty(store.GetView().Events);
     }

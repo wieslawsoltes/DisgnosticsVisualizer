@@ -64,12 +64,10 @@ public sealed class RoutedEventTests
             var h = Probe.BeginRoutedHandler(callback, args, args, args, 4, false, false, false);
             Probe.EndRoutedHandler(ref h, false, true); Probe.EndRoutedEvent(ref route, false, true);
         }
-        for (var i = 0; i < 256; i++) Iteration();
-        var before = GC.GetAllocatedBytesForCurrentThread(); for (var i = 0; i < 10000; i++) Iteration();
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before; Assert.Equal(0, allocated);
-        capture.SetRecording(false); before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 10000; i++) Iteration();
-        allocated = GC.GetAllocatedBytesForCurrentThread() - before; Assert.Equal(0, allocated);
+        Action<int> body = count => { for (var i = 0; i < count; i++) Iteration(); };
+        var allocated = AllocationMeasurement.Measure(body); Assert.Equal(0, allocated);
+        capture.SetRecording(false);
+        allocated = AllocationMeasurement.Measure(body); Assert.Equal(0, allocated);
         Assert.Equal(0, capture.ProbeFaults); Assert.Equal(0, capture.DroppedEvents);
     }
 

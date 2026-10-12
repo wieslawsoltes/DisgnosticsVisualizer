@@ -80,10 +80,9 @@ public sealed class DispatcherOperationTests
         var weak = AdmitAndForget(); GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
         Assert.False(weak.IsAlive);
         session.SetRecording(false); var operation = new object();
-        Probe.DispatcherQueued(operation, 0, -6, "disabled");
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 10000; i++) Probe.DispatcherQueued(operation, 0, -6, "disabled");
-        Assert.Equal(before, GC.GetAllocatedBytesForCurrentThread());
+        var allocated = AllocationMeasurement.Measure(count =>
+        { for (var i = 0; i < count; i++) Probe.DispatcherQueued(operation, 0, -6, "disabled"); });
+        Assert.Equal(0, allocated);
         Assert.Equal(0, session.ProbeFaults);
     }
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]

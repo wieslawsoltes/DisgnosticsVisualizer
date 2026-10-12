@@ -11,11 +11,8 @@ public sealed class ProbeContractTests
     {
         using var session = Probe.Start(new() { EventsPerThread = 16384 });
         var target = new object();
-        for (var i = 0; i < 256; i++) { using var scope = Probe.Enter(0, "hot", target); }
-        var start = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 10000; i++) { using var scope = Probe.Enter(0, "hot", target); }
-        // Evaluate before entering xUnit generic assertion helpers (which may initialize lazily).
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - start;
+        var allocated = AllocationMeasurement.Measure(count =>
+        { for (var i = 0; i < count; i++) { using var scope = Probe.Enter(0, "hot", target); } });
         Assert.Equal(0, allocated);
         Assert.Equal(0, session.ProbeFaults);
         Assert.Equal(0, session.DroppedEvents);
