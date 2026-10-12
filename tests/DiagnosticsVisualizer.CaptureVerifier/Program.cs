@@ -36,7 +36,7 @@ if (args.Length == 3 && args[0] == "--remote")
     var investigation = VerifyInvestigation(live);
     var resourceLookups = VerifyResourceLookups(live);
     var inspection = ReferenceInspection(live); var candidates = VerifyResourceMetadata(inspection);
-    var evidence = new { ResourceLookups = resourceLookups, Investigation = investigation, decoder.DeltaFrames, Blocks = blocks, Events = live.Events.Length, Nodes = inspection.Snapshot.Nodes.Length, LatestSnapshotNodes = live.Snapshot.Nodes.Length,
+    var evidence = new { Styling = VerifyStyling(live), ResourceLookups = resourceLookups, Investigation = investigation, decoder.DeltaFrames, Blocks = blocks, Events = live.Events.Length, Nodes = inspection.Snapshot.Nodes.Length, LatestSnapshotNodes = live.Snapshot.Nodes.Length,
         ResourceCandidates = candidates, AsyncLifetimes = lifetimes, AsyncCausalNotifications = causalNotifications, SourceSites = live.SourceSites.Count, MappedSites = live.SourceSites.Values.Count(s => s.Line > 0),
         live.ProbeFaults, live.DroppedEvents, live.MissingBlocks, CommandAcknowledged = acknowledged };
     await File.WriteAllTextAsync(args[2], JsonSerializer.Serialize(evidence, new JsonSerializerOptions { WriteIndented = true }));
@@ -59,7 +59,7 @@ var resourceCandidates = VerifyResourceMetadata(inspectionView);
 var observed = view.Events.GroupBy(e => e.Subsystem).ToDictionary(g => g.Key.ToString(), g => g.Count());
 var report = new
 {
-    ResourceLookups = resourceLookupReport, Investigation = investigationReport, read.Blocks, read.Events, read.TruncatedTail, read.DeltaFrames, view.DroppedEvents, view.ProbeFaults,
+    Styling = VerifyStyling(view), ResourceLookups = resourceLookupReport, Investigation = investigationReport, read.Blocks, read.Events, read.TruncatedTail, read.DeltaFrames, view.DroppedEvents, view.ProbeFaults,
     view.MetadataDrops, view.MissingBlocks,
     SourceSites = view.SourceSites.Count, MappedSites = view.SourceSites.Values.Count(s => s.Line > 0),
     AsyncKickoffSites = view.SourceSites.Values.Count(s => s.AsyncKickoff),
@@ -77,3 +77,23 @@ if (!view.SourceSites.Values.Any(s => s.Assembly == "DiagnosticsVisualizer.Sampl
     !view.SourceSites.Values.Any(s => s.AsyncKickoff)) throw new InvalidDataException("Missing real source mapping or async kickoff coverage.");
 Console.WriteLine(JsonSerializer.Serialize(report));
 
+
+static object VerifyStyling(TraceView trace)
+{
+    var index = new StyleEvaluationIndex(trace);
+    var target = trace.Checkpoints.SelectMany(c => c.Data.Nodes).FirstOrDefault(n => n.Name == "StyleProbe")?.Id ?? 0;
+    if (target == 0) throw new InvalidDataException("Styling reference target checkpoint was not retained.");
+    var attachments = index.Calls.Where(r => r.Kind == StyleEvaluationKind.Attach && r.TargetId == target).ToArray();
+    var styles = attachments.Select(r => r.SubjectId).ToHashSet();
+    var frames = index.Calls.Where(r => r.Kind == StyleEvaluationKind.Frame && styles.Contains(r.ContextId)).ToArray();
+    if (!attachments.Any(r => r.Status == "Conditional (activator)") ||
+        !index.Calls.Any(r => r.Kind == StyleEvaluationKind.Match && r.TargetId == target && r.ActivatorId > 0) ||
+        !frames.Any(r => r.Status == "Active" && r.Changed == true) || !frames.Any(r => r.Status == "Inactive" && r.Changed == true) ||
+        !index.Calls.Any(r => r.Kind == StyleEvaluationKind.Signal && styles.Contains(r.ContextId)) || index.InvalidMarkers != 0)
+        throw new InvalidDataException("Original selector results and observed reference style activation were not preserved.");
+    return new { Evaluations = index.Calls.Length, Roots = index.Roots.Length, index.InvalidMarkers,
+        Conditional = index.Calls.Count(r => r.Status == "Conditional (activator)"),
+        FrameChanges = index.Calls.Count(r => r.Kind == StyleEvaluationKind.Frame && r.Changed == true),
+        Signals = index.Calls.Count(r => r.Kind == StyleEvaluationKind.Signal), ReferenceTarget = target,
+        ReferenceAttachments = attachments.Length, ReferenceFrameObservations = frames.Length };
+}

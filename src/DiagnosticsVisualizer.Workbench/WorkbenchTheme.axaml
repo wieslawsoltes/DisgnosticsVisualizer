@@ -64,4 +64,12 @@
     <Setter Property="MinHeight" Value="28" />
     <Setter Property="CornerRadius" Value="4" />
   </Style>
+  <Style Selector=".dv-workbench .dv-investigation-actions Button">
+    <Setter Property="Padding" Value="8,4" />
+    <Setter Property="MinHeight" Value="26" />
+    <Setter Property="CornerRadius" Value="3" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="#41454B" />
+    <Setter Property="Background" Value="#2B2D30" />
+  </Style>
 </Styles>

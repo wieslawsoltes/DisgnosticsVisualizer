@@ -4,7 +4,15 @@ A cross-subsystem Avalonia trace recorder, inspector and Rider-style docking wor
 
 [Browser workbench](https://wieslawsoltes.github.io/DisgnosticsVisualizer/) · [Build/integration](https://github.com/wieslawsoltes/DisgnosticsVisualizer/actions/workflows/build.yml) · [Browser verification/deployment](https://github.com/wieslawsoltes/DisgnosticsVisualizer/actions/workflows/browser.yml)
 
-**0.1.0-alpha.10.** An actively validated implementation, not a claim of complete coverage of every Avalonia release or Chrome DevTools feature. The browser starts with a labelled synthetic example; it never pretends to be attached to an application. Check the deployment workflow for the current publication status.
+**0.1.0-alpha.11.** An actively validated implementation, not a claim of complete coverage of every Avalonia release or Chrome DevTools feature. The browser starts with a labelled synthetic example; it never pretends to be attached to an application. Check the deployment workflow for the current publication status.
+
+### New in alpha.11
+
+The **Styling** workspace records original selector `Match` / concrete `Evaluate` results, `Style.TryAttach` attempts, style-frame `GetIsActive` results and `hasChanged`, and actual activator-sink notifications. Enable `AVTRACE_STYLE_EVALUATIONS=1` on freshly instrumented output. Conditional matches, frame activity and effective setter precedence are deliberately separate: a conditional match is not proof of current activation, and an active frame is not proof that its setter wins.
+
+Search execution roots or all calls, filter selector/attachment/frame/signal operations, inspect the bounded evaluation cascade, jump to target/subject/context/activator/source, or analyze the selected call. **Related activation history** correlates observed frame/style/activator identities with timestamps and activity changes without extrapolating state between records or guessing a shared frame's owner. The preset preserves existing layouts and uses compact diagnostics-scoped Rider surfaces; resizable investigation splits and wrapping action bars work on desktop and WASM.
+
+The adapter never formats arbitrary selectors/styles, subscribes to an activator, reads its state again, or replays an evaluation. Known original inert accessor/enum shapes are checked before weaving, and original exceptions/out results are preserved. See [styling evaluation contracts and verification](docs/styling-evaluations.md).
 
 ### New in alpha.10
 
@@ -114,7 +122,7 @@ Build the local feed with `bash eng/pack.sh`. Add this reference to the applicat
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="DiagnosticsVisualizer.Build" Version="0.1.0-alpha.10" />
+  <PackageReference Include="DiagnosticsVisualizer.Build" Version="0.1.0-alpha.11" />
 </ItemGroup>
 <PropertyGroup>
   <DiagnosticsEnabled>true</DiagnosticsEnabled>

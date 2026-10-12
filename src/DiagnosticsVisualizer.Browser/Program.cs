@@ -3,6 +3,7 @@ using System.Runtime.Versioning;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Browser;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.VisualTree;
@@ -67,6 +68,8 @@ public static partial class Program
             routedDispatches = visuals.OfType<RoutedEventsControl>().FirstOrDefault()?.DispatchCount ?? 0,
             canNavigateBack = model?.CanNavigateBack == true, canNavigateForward = model?.CanNavigateForward == true,
             resourceLookups = visuals.OfType<ResourceLookupsControl>().FirstOrDefault()?.LookupCount ?? 0,
+            styleHistoryVisible = visuals.OfType<DataGrid>().Any(grid => AutomationProperties.GetName(grid) == "Related style activation history" && grid.IsEffectivelyVisible),
+            styleEvaluations = visuals.OfType<StyleEvaluationsControl>().FirstOrDefault()?.EvaluationCount ?? 0,
             dispatcherOperations = visuals.OfType<DispatcherOperationsControl>().FirstOrDefault()?.OperationCount ?? 0,
             xamlOrigins = visuals.OfType<XamlOriginsControl>().FirstOrDefault()?.OriginCount ?? 0,
             sceneVisible = visuals.OfType<LayoutSceneControl>().Any(scene => scene.IsEffectivelyVisible),

@@ -55,6 +55,12 @@ try {
   await command('Workspace: Resources');
   await page.waitForFunction(() => { const h = globalThis.getDiagnosticsVisualizerHealth(); return h.activeDocuments.includes('resources') && h.resourceLookups > 20; });
   await page.screenshot({ path: 'artifacts/browser/resource-lookups.png', fullPage: true });
+  await command('Workspace: Styling');
+  await page.waitForFunction(() => { const h = globalThis.getDiagnosticsVisualizerHealth(); return h.activeDocuments.includes('styling') && h.styleEvaluations > 0; });
+  await page.screenshot({ path: 'artifacts/browser/styling.png', fullPage: true });
+  await command('Show Style activation history');
+  await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth().styleHistoryVisible);
+  await page.screenshot({ path: 'artifacts/browser/style-activation-history.png', fullPage: true });
   await command('Show Dependencies');
   await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth().activeDocuments.includes('dependencies'));
   await page.screenshot({ path: 'artifacts/browser/dependencies.png', fullPage: true });
@@ -126,7 +132,7 @@ try {
   await page.screenshot({ path: 'artifacts/browser/compact.png', fullPage: true });
   const finalHealth = await page.evaluate(() => globalThis.getDiagnosticsVisualizerHealth());
   assert.equal(finalHealth.error, '');
-  await writeFile('artifacts/browser/health.json', JSON.stringify({ initial: health, final: finalHealth, keyboardCommands: true, riderPreset: true, pointerRange: true, persistedWorkspace: true, sourceNavigation: true, dispatcherQueue: true, xamlOrigins: true, routedEvents: true, selectionHistory: true, resourceLookups: true }, null, 2));
+  await writeFile('artifacts/browser/health.json', JSON.stringify({ initial: health, final: finalHealth, keyboardCommands: true, riderPreset: true, pointerRange: true, persistedWorkspace: true, sourceNavigation: true, stylingEvaluations: true, styleActivationHistory: true, dispatcherQueue: true, xamlOrigins: true, routedEvents: true, selectionHistory: true, resourceLookups: true }, null, 2));
   assert.deepEqual(errors, [], 'Browser errors or missing assets were detected.');
   console.log(JSON.stringify({ status: 'passed', ...finalHealth }));
 } catch (error) {
