@@ -66,6 +66,7 @@ public static partial class Program
             statisticsVisible = visuals.OfType<DataGrid>().Any(grid => grid.Name == "StatisticsGrid" && grid.IsEffectivelyVisible),
             routedDispatches = visuals.OfType<RoutedEventsControl>().FirstOrDefault()?.DispatchCount ?? 0,
             canNavigateBack = model?.CanNavigateBack == true, canNavigateForward = model?.CanNavigateForward == true,
+            resourceLookups = visuals.OfType<ResourceLookupsControl>().FirstOrDefault()?.LookupCount ?? 0,
             dispatcherOperations = visuals.OfType<DispatcherOperationsControl>().FirstOrDefault()?.OperationCount ?? 0,
             xamlOrigins = visuals.OfType<XamlOriginsControl>().FirstOrDefault()?.OriginCount ?? 0,
             sceneVisible = visuals.OfType<LayoutSceneControl>().Any(scene => scene.IsEffectivelyVisible),

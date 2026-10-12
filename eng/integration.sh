@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-version="${1:-0.1.0-alpha.8}"
+version="${1:-0.1.0-alpha.9}"
 root="$PWD"
 mkdir -p artifacts/integration
 sample=tests/DiagnosticsVisualizer.Sample
@@ -11,6 +11,7 @@ export AVTRACE_EVENTS_PER_THREAD=65536
 export AVTRACE_MAX_THREADS=16
 export AVTRACE_SAMPLE_EVERY=1
 export AVTRACE_ROUTED_EVENTS=1
+export AVTRACE_RESOURCE_LOOKUPS=1
 export AVTRACE_XAML_OBJECTS=1
 export AVTRACE_DISPATCHER_OPERATIONS=1
 export AVTRACE_ASYNC_OPERATIONS=1
@@ -29,6 +30,7 @@ grep -q 'ROUTING_WORKLOAD_OK handlers=4 handled=false fault=observed' artifacts/
 grep -q 'ASYNC_WORKLOAD_OK notifications=1' artifacts/integration/workload.log
 grep -q 'RESOURCE_WORKLOAD_OK deferred=0' artifacts/integration/workload.log
 grep -q 'DISPATCHER_WORKLOAD_OK completed=2 aborted=0 fault=observed' artifacts/integration/workload.log
+grep -q 'RESOURCE_LOOKUP_WORKLOAD_OK merged=higher theme=dark lazy=1 null=found missing=false opaque=safe fault=preserved' artifacts/integration/workload.log
 verifier=tests/DiagnosticsVisualizer.CaptureVerifier/bin/Release/net10.0/DiagnosticsVisualizer.CaptureVerifier.dll
 dotnet "$verifier" artifacts/integration/sample.avtrace artifacts/integration/capture-report.json
 collector=src/DiagnosticsVisualizer.Collector/bin/Release/net10.0/DiagnosticsVisualizer.Collector.dll

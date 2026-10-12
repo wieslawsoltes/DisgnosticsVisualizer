@@ -11,6 +11,8 @@ public static class DemoTraceFactory
         var session = Guid.Parse("75d8a72c-581b-4b6a-a9ad-98ead2cefc10");
         var symbols = new[]
         {
+            new Symbol(33, "ResourceNodeExtensions.TryFindResource"), new(34, "ResourceDictionary.TryGetResource"),
+            new(35, "key: SystemAccentColor"), new(36, "key: Dark"), new(37, "key: OptionalAccent"),
             new Symbol(1, "DispatcherOperation.InvokeCore"), new(2, "AnimationInstance.Step"),
             new(3, "DashboardViewModel.PropertyChanged: SelectedItem"), new(4, "BindingExpression.PublishValue"),
             new(5, "AvaloniaObject.RaisePropertyChanged: Content"), new(6, "Layoutable.InvalidateMeasure"),
@@ -63,7 +65,7 @@ public static class DemoTraceFactory
         var objects = nodes.Select(n => new ObjectInfo(n.Id, n.Type, string.IsNullOrEmpty(n.Name) ? n.Type : n.Name))
             .Concat([new ObjectInfo(100, "ControlTheme", "Fluent Button"), new(101, "Style", "Button.primary:pointerover"),
                 new(102, "Resource", "SystemAccentColor"), new(103, "DashboardViewModel", "DashboardViewModel"),
-                new(104, "ObservableCollection<Result>", "Results"), new(105, "DataTemplate", "ResultCardTemplate"), new(106, "DispatcherOperation", "Synthetic dispatcher admission"), new(107, "RoutedEvent", "Synthetic PointerPressed")]).ToArray();
+                new(104, "ObservableCollection<Result>", "Results"), new(105, "DataTemplate", "ResultCardTemplate"), new(106, "DispatcherOperation", "Synthetic dispatcher admission"), new(107, "RoutedEvent", "Synthetic PointerPressed"), new(108, "ResourceDictionary", "Window resources"), new(109, "ResourceDictionary", "Theme resources"), new(110, "SolidColorBrush", "Synthetic resource value"), new(111, "System.String", "Resource key"), new(112, "System.String", "Dark")]).ToArray();
         var events = new List<TraceEvent>(frames * 36); long id = 0;
         events.Add(new(++id, 0, 0, 0, 5, 0, 1, 28, Subsystem.Xaml, TraceEventKind.Link, XamlObjectEvent.ConstructionCode));
         for (var f = 0; f < frames; f++)
@@ -115,6 +117,22 @@ public static class DemoTraceFactory
             Span(7, Subsystem.Styles, 1400, 1200, 5);
             var styling = id; Span(8, Subsystem.Selectors, 1440, 280, 5, styling);
             Span(9, Subsystem.Resources, 1820, 190, 5, styling);
+            if (f % 12 == 0)
+            {
+                long Lookup(long parentLookup, long offset, long duration, long provider, ResourceLookupOutcome outcome, int symbol, int keyName)
+                {
+                    var lookup = ++id; var at = start + offset;
+                    events.Add(new(++id, lookup, at, 0, 111, provider, 1, keyName, Subsystem.Resources, TraceEventKind.Link, ResourceLookupEvent.RequestCode, parentLookup));
+                    events.Add(new(++id, lookup, at, 0, 112, 0, 1, 36, Subsystem.Resources, TraceEventKind.Link, ResourceLookupEvent.ThemeCode, parentLookup));
+                    events.Add(new(lookup, parentLookup == 0 ? styling : parentLookup, at, duration, provider, outcome == ResourceLookupOutcome.Found ? 110 : 0, 1, symbol,
+                        Subsystem.Resources, TraceEventKind.Span, ResourceLookupEvent.CompleteCode(outcome), parentLookup));
+                    return lookup;
+                }
+                var missing = f % 36 == 24; var keyName = missing ? 37 : 35;
+                var lookup = Lookup(0, 1820, 180, 5, missing ? ResourceLookupOutcome.Missing : ResourceLookupOutcome.Found, 33, keyName);
+                Lookup(lookup, 1830, 35, 108, ResourceLookupOutcome.Missing, 34, keyName);
+                Lookup(lookup, 1875, 110, 109, missing ? ResourceLookupOutcome.Missing : ResourceLookupOutcome.Found, 34, keyName);
+            }
             Span(23, Subsystem.Resources, 2050, 110, 5, styling);
             Span(10, Subsystem.ControlThemes, 2650, 190, 5);
             Span(11, Subsystem.Templates, 2900, 1000, 5);

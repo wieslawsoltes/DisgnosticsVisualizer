@@ -27,13 +27,13 @@ public sealed class WorkbenchDockFactory(IReadOnlyDictionary<string, Control> vi
         {
             var title = id switch
             {
-                "routed" => "Routed events", "dispatcher" => "Dispatcher queue", "xaml" => "XAML origins", "dependencies" => "Dependencies", "async" => "Async operations", "sources" => "Sources", "timeline" => "Timeline", "flame" => "Flame chart", "causality" => "Causal chain", "systems" => "Subsystems",
+                "routed" => "Routed events", "resources" => "Resource lookups", "dispatcher" => "Dispatcher queue", "xaml" => "XAML origins", "dependencies" => "Dependencies", "async" => "Async operations", "sources" => "Sources", "timeline" => "Timeline", "flame" => "Flame chart", "causality" => "Causal chain", "systems" => "Subsystems",
                 "comparison" => "Compare", "visual" => "Visual tree", "logical" => "Logical tree", "properties" => "Properties & resources",
                 "details" => "Event details", "events" => "Event log", "findings" => "Findings", "costs" => "Hot paths",
                 "topdown" => "Call tree", "bottomup" => "Bottom-up", "statistics" => "Statistics", "threads" => "Thread activity",
                 "scene" => "Layout scene", "history" => "Snapshot history", "bookmarks" => "Bookmarks", "health" => "Capture health", _ => id
             };
-            IDockable panel = id is "routed" or "dispatcher" or "xaml" or "dependencies" or "async" or "sources" or "timeline" or "flame" or "causality" or "systems" or "comparison" or "topdown" or "bottomup" or "statistics" or "scene" or "history"
+            IDockable panel = id is "resources" or "routed" or "dispatcher" or "xaml" or "dependencies" or "async" or "sources" or "timeline" or "flame" or "causality" or "systems" or "comparison" or "topdown" or "bottomup" or "statistics" or "scene" or "history"
                 ? new PanelDocument { Id = id, Title = title, View = view, CanClose = false, CanFloat = true }
                 : new PanelTool { Id = id, Title = title, View = view, CanClose = false, CanFloat = true, CanPin = true };
             _panels[id] = panel;
@@ -43,18 +43,19 @@ public sealed class WorkbenchDockFactory(IReadOnlyDictionary<string, Control> vi
             VisibleDockables = Panels("visual", "logical"), IsCollapsable = false };
         var right = new ToolDock { Id = "right", Alignment = Alignment.Right, Proportion = .23,
             VisibleDockables = Panels("properties", "details", "bookmarks", "health"), IsCollapsable = false };
-        var documents = new DocumentDock { Id = "documents", IsCollapsable = false, Proportion = .73, CanCreateDocument = false,
+        var documents = new DocumentDock { Id = "documents", IsCollapsable = false, Proportion = preset == WorkspacePreset.Resources ? .84 : .73, CanCreateDocument = false,
             VisibleDockables = preset switch
             {
                 WorkspacePreset.Profile => Panels("flame", "topdown", "bottomup", "statistics", "async"),
                 WorkspacePreset.Compare => Panels("comparison", "timeline"),
+                WorkspacePreset.Resources => Panels("resources", "dependencies", "sources", "xaml"),
                 WorkspacePreset.Investigate => Panels("dispatcher", "routed", "xaml", "dependencies", "sources"),
                 _ => Panels("timeline", "scene", "causality")
             } };
-        var bottom = new ToolDock { Id = "bottom", Alignment = Alignment.Bottom, Proportion = .27,
+        var bottom = new ToolDock { Id = "bottom", Alignment = Alignment.Bottom, Proportion = preset == WorkspacePreset.Resources ? .16 : .27,
             VisibleDockables = Panels("events", "findings", "costs", "threads"), IsCollapsable = false };
         left.ActiveDockable = _panels.GetValueOrDefault("visual"); right.ActiveDockable = _panels.GetValueOrDefault(preset == WorkspacePreset.Profile ? "details" : "properties");
-        documents.ActiveDockable = _panels.GetValueOrDefault(preset switch { WorkspacePreset.Profile => "flame", WorkspacePreset.Compare => "comparison", WorkspacePreset.Investigate => "dispatcher", _ => "timeline" });
+        documents.ActiveDockable = _panels.GetValueOrDefault(preset switch { WorkspacePreset.Profile => "flame", WorkspacePreset.Compare => "comparison", WorkspacePreset.Resources => "resources", WorkspacePreset.Investigate => "dispatcher", _ => "timeline" });
         bottom.ActiveDockable = _panels.GetValueOrDefault(preset == WorkspacePreset.Profile ? "costs" : "findings");
         var center = new ProportionalDock { Id = "center", Orientation = Dock.Model.Core.Orientation.Vertical, Proportion = preset == WorkspacePreset.Inspect ? .59 : .63,
             VisibleDockables = CreateList<IDockable>(documents, new ProportionalDockSplitter(), bottom) };

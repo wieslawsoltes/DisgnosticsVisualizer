@@ -87,6 +87,7 @@ public sealed partial class WorkloadWindow : Window
             throw new InvalidOperationException("Instrumentation changed application behavior.");
         Console.WriteLine("WORKLOAD_OK clicks=24 direct=23 items=4");
         ExerciseRouting(button);
+        ExerciseResourceLookups(button);
         var animation = new Animation
         {
             Duration = TimeSpan.FromMilliseconds(80),

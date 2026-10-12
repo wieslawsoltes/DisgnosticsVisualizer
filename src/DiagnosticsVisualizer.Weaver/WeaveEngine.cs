@@ -59,6 +59,9 @@ public static class WeaveEngine
                 }
                 var module = assembly.MainModule; var originalMvid = module.Mvid.ToString();
                 var signed = assembly.Name.HasPublicKey; var methodReports = new List<MethodReport>();
+                var resourceReports = ResourceLookupRewriter.Instrument(module);
+                methodReports.AddRange(resourceReports);
+                var resourceTokens = resourceReports.Where(r => r.Status == "ResourceLookup").Select(r => r.Token).ToHashSet();
                 methodReports.AddRange(RoutedEventRewriter.Instrument(module));
                 if (options.Deep)
                     foreach (var method in AllTypes(module.Types).SelectMany(t => t.Methods).ToArray())
@@ -71,7 +74,7 @@ public static class WeaveEngine
                 foreach (var type in AllTypes(module.Types))
                 foreach (var method in type.Methods.ToArray())
                 {
-                    if (!method.HasBody) continue;
+                    if (!method.HasBody || resourceTokens.Contains(method.MetadataToken.ToInt32())) continue;
                     var category = HookCatalog.Match(method, options.Deep);
                     var notifications = MethodRewriter.InstrumentNotifications(module, method);
                     if (category is null && notifications > 0) category = Subsystem.Application;

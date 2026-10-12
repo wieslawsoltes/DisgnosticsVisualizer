@@ -77,7 +77,7 @@ public sealed partial class WorkbenchView : UserControl, IDisposable
             ["timeline"] = ChartPanel(_timeline, _timeline.Fit), ["flame"] = ChartPanel(_flame, _flame.Fit),
             ["causality"] = ChartPanel(_causal, _causal.Fit), ["systems"] = new ScrollViewer { Content = _systems },
             ["comparison"] = ComparisonPanel(), ["visual"] = TreePanel(_visual), ["logical"] = TreePanel(_logical),
-            ["routed"] = _routed, ["dispatcher"] = _dispatcher, ["xaml"] = _xaml, ["dependencies"] = _dependencies, ["async"] = _asyncOperations, ["sources"] = _sources, ["properties"] = _properties, ["details"] = _details, ["events"] = EventPanel(),
+            ["routed"] = _routed, ["resources"] = _resourceLookups, ["dispatcher"] = _dispatcher, ["xaml"] = _xaml, ["dependencies"] = _dependencies, ["async"] = _asyncOperations, ["sources"] = _sources, ["properties"] = _properties, ["details"] = _details, ["events"] = EventPanel(),
             ["findings"] = _findings, ["costs"] = CostPanel(),
             ["topdown"] = _topDown, ["bottomup"] = _bottomUp, ["statistics"] = _statistics, ["threads"] = _threads,
             ["scene"] = _scene, ["history"] = HistoryPanel(), ["bookmarks"] = _bookmarks,
