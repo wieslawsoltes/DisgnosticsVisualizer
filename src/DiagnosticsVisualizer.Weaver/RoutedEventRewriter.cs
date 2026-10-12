@@ -15,29 +15,37 @@ internal static class RoutedEventRewriter
         if (type is null) return [];
         var args = module.GetType("Avalonia.Interactivity.RoutedEventArgs");
         var routed = module.GetType("Avalonia.Interactivity.RoutedEvent");
-        var item = type.NestedTypes.SingleOrDefault(t => t.Name == "RouteItem");
-        var raise = type.Methods.SingleOrDefault(m => m.Name == "RaiseEvent" && m.Parameters.Count == 2);
-        var loop = type.Methods.SingleOrDefault(m => m.Name == "RaiseEventImpl" && m.Parameters.Count == 1);
-        var field = type.Fields.SingleOrDefault(f => f.Name == "_event");
-        MethodDefinition? Getter(TypeDefinition? t, string name) => t?.Methods.SingleOrDefault(m => m.Name == "get_" + name &&
-            !m.IsVirtual && !m.IsStatic && m.Parameters.Count == 0 && m.HasBody);
+        var item = type.NestedTypes.UniqueOrDefault(t => t.Name == "RouteItem");
+        var raise = type.Methods.UniqueOrDefault(m => m.Name == "RaiseEvent" && m.Parameters.Count == 2);
+        var loop = type.Methods.UniqueOrDefault(m => m.Name == "RaiseEventImpl" && m.Parameters.Count == 1);
+        var field = type.Fields.UniqueOrDefault(f => f.Name == "_event");
+        MethodDefinition? Getter(TypeDefinition? t, string name) => t?.Methods.UniqueOrDefault(m => m.Name == "get_" + name &&
+            !m.IsVirtual && !m.IsStatic && m.Parameters.Count == 0 && m.HasBody &&
+            m.Body.Instructions.Where(i => i.OpCode != OpCodes.Nop).Select(i => i.OpCode.Code).SequenceEqual(new[] { Code.Ldarg_0, Code.Ldfld, Code.Ret }));
         var source = Getter(args, "Source"); var handled = Getter(args, "Handled"); var route = Getter(args, "Route");
         var name = Getter(routed, "Name"); var strategies = Getter(routed, "RoutingStrategies");
         var handler = Getter(item, "Handler"); var target = Getter(item, "Target");
         var routes = Getter(item, "Routes"); var too = Getter(item, "HandledEventsToo");
-        var setSource = raise?.Body?.Instructions.SingleOrDefault(i => i.Operand is MethodReference m && m.DeclaringType.FullName == args?.FullName && m.Name == "set_Source");
-        var local = loop?.Body?.Variables.SingleOrDefault(v => v.VariableType.FullName == item?.FullName);
-        var classCall = loop?.Body?.Instructions.SingleOrDefault(i => i.Operand is MethodReference m && m.DeclaringType.FullName == routed?.FullName && m.Name == "InvokeRaised");
-        var adapterCall = loop?.Body?.Instructions.SingleOrDefault(i => i.Operand is MethodReference m &&
+        var setSource = raise?.Body?.Instructions.UniqueOrDefault(i => i.Operand is MethodReference m && m.DeclaringType.FullName == args?.FullName && m.Name == "set_Source");
+        var local = loop?.Body?.Variables.UniqueOrDefault(v => v.VariableType.FullName == item?.FullName);
+        var classCall = loop?.Body?.Instructions.UniqueOrDefault(i => i.Operand is MethodReference m && m.DeclaringType.FullName == routed?.FullName && m.Name == "InvokeRaised");
+        var adapterCall = loop?.Body?.Instructions.UniqueOrDefault(i => i.Operand is MethodReference m &&
             m.DeclaringType.FullName == "System.Action`3<System.Delegate,System.Object,Avalonia.Interactivity.RoutedEventArgs>" && m.Name == "Invoke");
-        var dynamicCall = loop?.Body?.Instructions.SingleOrDefault(i => i.Operand is MethodReference m && m.DeclaringType.FullName == "System.Delegate" &&
+        var dynamicCall = loop?.Body?.Instructions.UniqueOrDefault(i => i.Operand is MethodReference m && m.DeclaringType.FullName == "System.Delegate" &&
             m.Name == "DynamicInvoke" && m.Parameters.Count == 1 && m.Parameters[0].ParameterType.FullName == "System.Object[]");
         var candidate = loop?.Body?.Instructions.FirstOrDefault(i => i.Operand is MethodReference m && m.FullName == handler?.FullName)?.Previous;
         // Inspect the entire supported shape before adding any methods or IL.
         if (args is null || routed is null || item is null || raise is null || loop is null || field?.FieldType.FullName != routed.FullName ||
-            source is null || handled?.ReturnType.MetadataType != MetadataType.Boolean || route is null || name?.ReturnType.MetadataType != MetadataType.String ||
+            source?.ReturnType.MetadataType != MetadataType.Object || raise.ReturnType.MetadataType != MetadataType.Void ||
+            raise.Parameters[0].ParameterType.FullName != "Avalonia.Interactivity.Interactive" || raise.Parameters[1].ParameterType.FullName != args.FullName ||
+            loop.Parameters[0].ParameterType.FullName != args.FullName || loop.ReturnType.MetadataType != MetadataType.Void ||
+            route?.ReturnType.FullName != "Avalonia.Interactivity.RoutingStrategies" || strategies?.ReturnType.FullName != "Avalonia.Interactivity.RoutingStrategies" ||
+            handler?.ReturnType.FullName != "System.Delegate" || target?.ReturnType.FullName != "Avalonia.Interactivity.Interactive" ||
+            routes?.ReturnType.FullName != "Avalonia.Interactivity.RoutingStrategies" || too?.ReturnType.MetadataType != MetadataType.Boolean ||
+            handled?.ReturnType.MetadataType != MetadataType.Boolean || route is null || name?.ReturnType.MetadataType != MetadataType.String ||
             strategies is null || handler is null || target is null || routes is null || too is null || setSource is null || local is null ||
             classCall?.OpCode != OpCodes.Callvirt || adapterCall?.OpCode != OpCodes.Callvirt || dynamicCall?.OpCode != OpCodes.Callvirt ||
+            !CallShape(classCall, 2, MetadataType.Void) || !CallShape(adapterCall, 3, MetadataType.Void) || !CallShape(dynamicCall, 1, MetadataType.Object) ||
             candidate?.Operand != local || candidate.OpCode.Code is not (Code.Ldloca or Code.Ldloca_S) ||
             MethodRewriter.Unsupported(raise) is not null || MethodRewriter.Unsupported(loop) is not null ||
             type.Methods.Any(m => m.Name.StartsWith(Prefix, StringComparison.Ordinal)))
@@ -140,6 +148,19 @@ internal static class RoutedEventRewriter
             }) { il.InsertAfter(tail, i); tail = i; }
             body.InitLocals = true; body.MaxStackSize += 8; MethodRewriter.ExpandBranches(raise);
         }
+    }
+    private static bool CallShape(Instruction call, int parameters, MetadataType result) =>
+        call.Operand is MethodReference method && method.HasThis && method.Parameters.Count == parameters && method.ReturnType.MetadataType == result;
+    private static T? UniqueOrDefault<T>(this IEnumerable<T> source, Func<T, bool> predicate) where T : class
+    {
+        T? found = null;
+        foreach (var value in source)
+        {
+            if (!predicate(value)) continue;
+            if (found is not null) return null;
+            found = value;
+        }
+        return found;
     }
     private static Instruction Call(ModuleDefinition module, string name) => Instruction.Create(OpCodes.Call, module.ImportReference(typeof(Probe).GetMethod(name)!));
 }

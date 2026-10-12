@@ -99,6 +99,69 @@ public sealed class RoutedEventTests
         }
         finally { context.Unload(); Directory.Delete(directory, true); }
     }
+    [Fact] public void IncompleteConflictingAndLossAffectedDispatchesRemainExplicit()
+    {
+        var store = new TraceStore(); foreach (var block in DemoTraceFactory.Create(1)) store.Add(block);
+        var full = store.GetView(); var root = Assert.Single(RoutedDispatches.Analyze(full));
+        Assert.Equal("Returned", root.Status);
+        var partial = full with { Events = full.Events.Where(e => e.Id != root.Completion!.Value.Id).ToArray() };
+        var missing = Assert.Single(RoutedDispatches.Analyze(partial));
+        Assert.Equal("Incomplete / not retained", missing.Status); Assert.Null(missing.DurationMs); Assert.Null(missing.HandledAfter);
+        Assert.True(Assert.Single(RoutedDispatches.Analyze(full with { MissingBlocks = 1 })).CaptureIncomplete);
+        var malformed = root.Admission!.Value with { Id = 99_000, Data0 = root.Admission.Value.Data0 | 0x100000 };
+        var invalid = Assert.Single(RoutedDispatches.Analyze(full with { Events = [.. full.Events, malformed] }));
+        Assert.Equal("Conflicting / invalid", invalid.Status); Assert.Null(invalid.DurationMs);
+        Assert.Equal(root.Steps.Select(s => s.EventId), Assert.Single(RoutedDispatches.Analyze(full with { Events = full.Events.Reverse().ToArray() })).Steps.Select(s => s.EventId));
+    }
+
+    [Fact] public async Task ChromeExportRetainsHandlerSemanticsAndIntegrity()
+    {
+        var store = new TraceStore(); foreach (var block in DemoTraceFactory.Create(1)) store.Add(block);
+        using var output = new MemoryStream(); await TraceExport.WriteChromeJsonAsync(output, store.GetView() with { MetadataDrops = 3 });
+        output.Position = 0; using var json = await System.Text.Json.JsonDocument.ParseAsync(output);
+        var row = json.RootElement.GetProperty("traceEvents").EnumerateArray().First(e => e.TryGetProperty("args", out var a) &&
+            a.TryGetProperty("routedStep", out var k) && k.GetString() == "SkippedHandled");
+        var args = row.GetProperty("args"); Assert.True(args.GetProperty("handledBefore").GetBoolean());
+        Assert.Equal("Tunnel", args.GetProperty("route").GetString());
+        Assert.Equal(3, json.RootElement.GetProperty("diagnosticsVisualizer").GetProperty("metadataDrops").GetInt64());
+    }
+
+    [Fact] public void DelegateMetadataDoesNotRetainCallbackTargets()
+    {
+        using var capture = Probe.Start(new() { TrackRoutedEvents = true });
+        var weak = InvokeEphemeralCallback();
+        for (var i = 0; i < 3 && weak.IsAlive; i++) { GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect(); }
+        Assert.False(weak.IsAlive); Assert.Equal(0, capture.ProbeFaults);
+    }
+    private sealed class CallbackTarget { public void Invoke() { } }
+    [MethodImpl(MethodImplOptions.NoInlining)] private static WeakReference InvokeEphemeralCallback()
+    {
+        var target = new CallbackTarget(); Action callback = target.Invoke; var args = new object();
+        var dispatch = Probe.BeginRoutedEvent(args, args, args, "ephemeral", 1, false);
+        var handler = Probe.BeginRoutedHandler(callback, args, args, args, 1, false, false, false);
+        callback(); Probe.EndRoutedHandler(ref handler, false, true); Probe.EndRoutedEvent(ref dispatch, false, true);
+        return new WeakReference(target);
+    }
+
+    [Fact] public void UnknownRouteShapeSkipsSemanticRewritingBeforeMutation()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "routed-unknown-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(directory);
+        try
+        {
+            var target = Path.Combine(directory, "Avalonia.Base.dll");
+            using (var assembly = Mono.Cecil.AssemblyDefinition.ReadAssembly(typeof(Avalonia.Interactivity.EventRoute).Assembly.Location))
+            {
+                var item = assembly.MainModule.GetType("Avalonia.Interactivity.EventRoute").NestedTypes.Single(t => t.Name == "RouteItem");
+                item.Methods.Single(m => m.Name == "get_HandledEventsToo").Name = "ChangedFrameworkContract";
+                assembly.Write(target);
+            }
+            var manifest = WeaveEngine.Weave(new(directory) { Bootstrap = false, AllowSignedRewrite = true });
+            Assert.Contains(manifest.Assemblies.SelectMany(a => a.Methods), m => m.Signature == "Avalonia routed-event adapter" && m.Status == "Skipped");
+            using var rewritten = Mono.Cecil.AssemblyDefinition.ReadAssembly(target);
+            Assert.DoesNotContain(rewritten.MainModule.GetType("Avalonia.Interactivity.EventRoute").Methods, m => m.Name.StartsWith("__AvTraceRoute_", StringComparison.Ordinal));
+        }
+        finally { Directory.Delete(directory, true); }
+    }
     private sealed class Context(string directory) : AssemblyLoadContext(isCollectible: true)
     {
         protected override Assembly? Load(AssemblyName name)
