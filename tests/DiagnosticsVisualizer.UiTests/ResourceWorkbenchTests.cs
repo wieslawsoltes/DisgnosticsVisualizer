@@ -29,6 +29,18 @@ public sealed class ResourceWorkbenchTests
         var chart = control.GetVisualDescendants().OfType<ResourceLookupChart>().Single(); chart.Focus();
         window.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None); window.KeyReleaseQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
         Assert.Equal(rows[2].EventId, view.Model.SelectedEventId);
+        var valueButton = control.GetVisualDescendants().OfType<Button>().Single(b => (b.Content as string) == "Inspect returned object");
+        Assert.True(valueButton.IsEnabled);
+        long inspected = 0;
+        control.ObjectSelected += id => inspected = id;
+        valueButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal(rows[2].ValueId, inspected);
+        calls.SelectedItem = rows[1]; Assert.False(valueButton.IsEnabled);
+        DiagnosticsVisualizer.Analysis.TraceRange? requested = null;
+        control.RangeRequested += range => requested = range;
+        control.GetVisualDescendants().OfType<Button>().Single(b => (b.Content as string) == "Analyze selected call")
+            .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal(new TraceRange(rows[1].Completion!.Value.Timestamp, rows[1].Completion!.Value.End), requested);
         var all = control.GetVisualDescendants().OfType<CheckBox>().Single(c => (string?)c.Content == "All calls"); all.IsChecked = true;
         var requests = control.GetVisualDescendants().OfType<DataGrid>().Single(g => AutomationProperties.GetName(g) == "Resource lookup requests");
         requests.SelectedItem = rows[1]; Assert.Equal(rows[1].Id, control.SelectedLookup!.Id);

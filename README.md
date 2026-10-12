@@ -4,9 +4,17 @@ A cross-subsystem Avalonia trace recorder, inspector and Rider-style docking wor
 
 [Browser workbench](https://wieslawsoltes.github.io/DisgnosticsVisualizer/) · [Build/integration](https://github.com/wieslawsoltes/DisgnosticsVisualizer/actions/workflows/build.yml) · [Browser verification/deployment](https://github.com/wieslawsoltes/DisgnosticsVisualizer/actions/workflows/browser.yml)
 
-**0.1.0-alpha.8.** An actively validated implementation, not a claim of complete coverage of every Avalonia release or Chrome DevTools feature. The browser starts with a labelled synthetic example; it never pretends to be attached to an application. Check the deployment workflow for the current publication status.
+**0.1.0-alpha.9.** An actively validated implementation, not a claim of complete coverage of every Avalonia release or Chrome DevTools feature. The browser starts with a labelled synthetic example; it never pretends to be attached to an application. Check the deployment workflow for the current publication status.
 
-### New in alpha.8
+### New in alpha.9
+
+**Resource lookups** now records actual provider calls, key/theme identities, nested delegation, bool/out results and exception exits. Found nulls are distinct from misses. Returned values and deferred factories are never evaluated again by diagnostics, and opaque keys are never formatted. Enable `AVTRACE_RESOURCE_LOOKUPS=1` on instrumented output.
+
+The shared **Resources** workspace adds searchable requests and provider calls, a bounded common-scale cascade, selected-call analysis and provider/key/returned-object navigation. The cascade/table split is resizable, actions wrap in narrow panes, and null/missing results cannot masquerade as returned-object identities. The diagnostics-scoped compact Rider palette has clearer editor/header/selection contrast; saved docking layouts remain compatible.
+
+Packaged local and remote workloads now verify real merged/logical/theme lookup, cached deferred identity, true/null versus false outcomes, opaque-key safety and preserved construction failures. See [recorded resource resolution](docs/resource-lookups.md) for semantics, performance and measurement limits.
+
+### Previously in alpha.8
 
 **Routed events** now records real dispatch/handler propagation with Direct/Tunnel/Bubble phases, before/after handled state, route/handled skips and exceptional exits. It preserves typed and reflective callback exception behavior and observes aggregate class notifications without replacing callbacks. Enable `AVTRACE_ROUTED_EVENTS=1` on instrumented output; cold metadata registration allocates, while the warmed default capture path has strict zero-managed-allocation tests.
 
@@ -36,7 +44,7 @@ Zoomable subsystem timeline, thread flame chart, selected-event causal graph, su
 
 The actual **Rider Dark compact preset** is provided by Dock's Avalonia 11 package lane: `Dock.Avalonia.v11` and `Dock.Avalonia.Themes.Fluent.v11` **11.3.22**, shared `Dock.Model.Mvvm` **12.1.0.7**. Avalonia remains **11.3.22**. Do not mix unsuffixed Avalonia 12 UI packages into this build.
 
-Inspect, Profile, Compare and Investigate presets are available from the toolbar and command palette. Each now opens a focused set of documents rather than every tab at once; additional tools open on demand. Existing saved layouts are preserved; reapply a preset to adopt the focused defaults. Panel activation rails, cached documents, and a single-owner view host preserve controls across docking/template changes. Workspace topology, selected tabs, proportions, pinned panels and floating window geometry are saved every two seconds and on detach. Desktop settings live under local application data; browser settings use local storage. Only whitelisted panel identities and geometry are stored, never trace content or tokens. Invalid, oversized, deeply nested or duplicate layouts are rejected before the live layout changes.
+Inspect, Profile, Compare, Investigate and Resources presets are available from the toolbar and command palette. Each now opens a focused set of documents rather than every tab at once; additional tools open on demand. Existing saved layouts are preserved; reapply a preset to adopt the focused defaults. Panel activation rails, cached documents, and a single-owner view host preserve controls across docking/template changes. Workspace topology, selected tabs, proportions, pinned panels and floating window geometry are saved every two seconds and on detach. Desktop settings live under local application data; browser settings use local storage. Only whitelisted panel identities and geometry are stored, never trace content or tokens. Invalid, oversized, deeply nested or duplicate layouts are rejected before the live layout changes.
 
 Drag the global span-activity overview to select a half-open analysis range. Statistics, top-down/bottom-up calling contexts, thread span coverage and the event log use this range. Percentiles use observed, range-clipped durations. Exclusive time subtracts the **union of same-thread nested child intervals**, not asynchronous continuation time. Span coverage includes waits inside instrumented scopes and is **not CPU utilization**. Call-tree depth/node limits are explicit. Timeline/flame charts preserve zoom during same-session refreshes.
 
@@ -100,7 +108,7 @@ Build the local feed with `bash eng/pack.sh`. Add this reference to the applicat
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="DiagnosticsVisualizer.Build" Version="0.1.0-alpha.8" />
+  <PackageReference Include="DiagnosticsVisualizer.Build" Version="0.1.0-alpha.9" />
 </ItemGroup>
 <PropertyGroup>
   <DiagnosticsEnabled>true</DiagnosticsEnabled>

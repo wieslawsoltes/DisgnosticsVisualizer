@@ -22,6 +22,11 @@ public sealed class ResourceLookupsControl : UserControl
     private readonly DataGrid _calls = DiagnosticGrid.Create(("Provider", "Provider", -1), ("Key", "Key", 180), ("Result", "Status", 150),
         ("Elapsed ms", "DurationMs", 105), ("Returned type / identity", "ResultType", 240));
     private readonly ResourceLookupChart _chart = new();
+    private readonly Button _inspectProvider = new() { Content = "Inspect provider", FontSize = 11 };
+    private readonly Button _inspectKey = new() { Content = "Inspect key", FontSize = 11 };
+    private readonly Button _inspectValue = new() { Content = "Inspect returned object", FontSize = 11 };
+    private readonly Button _analyze = new() { Content = "Analyze selected call", FontSize = 11 };
+    private ResourceLookup? CurrentCall => _calls.SelectedItem as ResourceLookup ?? SelectedLookup;
     private readonly TextBlock _summary = new() { Margin = new(10, 5), FontSize = 11, TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock _detail = new() { Margin = new(10, 6), FontSize = 10, Foreground = ChartPalette.Muted, TextWrapping = TextWrapping.Wrap };
     private ResourceLookupIndex? _index;
@@ -41,21 +46,32 @@ public sealed class ResourceLookupsControl : UserControl
         Grid.SetRow(toolbar, 1); root.Children.Add(toolbar); Grid.SetRow(_roots, 2); root.Children.Add(_roots);
         var splitter = new GridSplitter { ResizeDirection = GridResizeDirection.Rows, HorizontalAlignment = HorizontalAlignment.Stretch, Background = ChartPalette.Grid.Brush };
         Grid.SetRow(splitter, 3); root.Children.Add(splitter);
-        var lower = new Grid { RowDefinitions = new("Auto,Auto,130,*") }; lower.Children.Add(_detail);
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new(10, 3), Spacing = 8 };
-        var inspect = new Button { Content = "Inspect provider", FontSize = 11 };
-        inspect.Click += (_, _) => { if ((_calls.SelectedItem as ResourceLookup ?? SelectedLookup) is { ProviderId: > 0 } r) ObjectSelected?.Invoke(r.ProviderId); };
-        var range = new Button { Content = "Analyze lookup", FontSize = 11 };
-        range.Click += (_, _) => { if (SelectedLookup is { DurationMs: not null, Completion: { } e } && e.End > e.Timestamp) RangeRequested?.Invoke(new(e.Timestamp, e.End)); };
-        actions.Children.Add(inspect); actions.Children.Add(range); Grid.SetRow(actions, 1); lower.Children.Add(actions);
+        var lower = new Grid { RowDefinitions = new("Auto,Auto,*,5,*") }; lower.Children.Add(_detail);
+        lower.RowDefinitions[2].MinHeight = 48;
+        lower.RowDefinitions[4].MinHeight = 52;
+        var actions = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new(10, 3) };
+        _inspectProvider.Click += (_, _) => { if (CurrentCall is { ProviderId: > 0 } r) ObjectSelected?.Invoke(r.ProviderId); };
+        _inspectKey.Click += (_, _) => { if (CurrentCall is { KeyId: > 0 } r) ObjectSelected?.Invoke(r.KeyId); };
+        _inspectValue.Click += (_, _) => { if (CurrentCall is { ValueId: > 0 } r) ObjectSelected?.Invoke(r.ValueId); };
+        _analyze.Click += (_, _) =>
+        {
+            if (CurrentCall is { DurationMs: not null, Completion: { } e } && e.End > e.Timestamp)
+                RangeRequested?.Invoke(new(e.Timestamp, e.End));
+        };
+        foreach (var button in new[] { _inspectProvider, _inspectKey, _inspectValue, _analyze }) { button.Margin = new(0, 0, 8, 3); actions.Children.Add(button); }
+        Grid.SetRow(actions, 1); lower.Children.Add(actions);
         var scroll = new ScrollViewer { Content = _chart, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-        Grid.SetRow(scroll, 2); lower.Children.Add(scroll); Grid.SetRow(_calls, 3); lower.Children.Add(_calls);
+        Grid.SetRow(scroll, 2); lower.Children.Add(scroll);
+        var detailSplitter = new GridSplitter { ResizeDirection = GridResizeDirection.Rows, HorizontalAlignment = HorizontalAlignment.Stretch, Background = ChartPalette.Grid.Brush };
+        AutomationProperties.SetName(detailSplitter, "Resize resource cascade and provider table");
+        Grid.SetRow(detailSplitter, 3); lower.Children.Add(detailSplitter);
+        Grid.SetRow(_calls, 4); lower.Children.Add(_calls);
         Grid.SetRow(lower, 4); root.Children.Add(lower); Content = root;
         AutomationProperties.SetName(_roots, "Resource lookup requests"); AutomationProperties.SetName(_calls, "Resource lookup provider calls"); AutomationProperties.SetName(_search, "Find resource lookup");
         _search.TextChanged += (_, _) => Refresh(); _outcome.SelectionChanged += (_, _) => Refresh();
         _allCalls.PropertyChanged += (_, e) => { if (e.Property == ToggleButton.IsCheckedProperty) Refresh(); };
         _roots.SelectionChanged += (_, _) => { if (!_updating) { ShowCalls(); if (SelectedLookup is { } row) EventSelected?.Invoke(row.EventId); } };
-        _calls.SelectionChanged += (_, _) => { if (!_updating && _calls.SelectedItem is ResourceLookup row) { _chart.Select(row.Id); EventSelected?.Invoke(row.EventId); } };
+        _calls.SelectionChanged += (_, _) => { if (!_updating) { UpdateActions(); if (_calls.SelectedItem is ResourceLookup row) { _chart.Select(row.Id); EventSelected?.Invoke(row.EventId); } } };
         _chart.LookupSelected += row => { _calls.SelectedItem = row; _calls.ScrollIntoView(row, null); };
     }
     public void SetTrace(TraceView trace, ResourceLookupIndex index)
@@ -76,7 +92,7 @@ public sealed class ResourceLookupsControl : UserControl
         {
             if (_visibleRoots.GetValueOrDefault(root.Id) is { } visible && SelectedLookup?.Id != root.Id)
             { _roots.SelectedItem = visible; ShowCalls(); }
-            _calls.SelectedItem = _visibleCalls.GetValueOrDefault(row.Id); _chart.Select(row.Id);
+            _calls.SelectedItem = _visibleCalls.GetValueOrDefault(row.Id); _chart.Select(row.Id); UpdateActions();
         }
         finally { _updating = false; }
     }
@@ -91,6 +107,14 @@ public sealed class ResourceLookupsControl : UserControl
         try { _visibleRoots = rows.ToDictionary(r => r.Id); _roots.ItemsSource = rows; _roots.SelectedItem = rows.FirstOrDefault(r => r.Id == id) ?? rows.FirstOrDefault(); ShowCalls(); }
         finally { _updating = false; }
     }
+    private void UpdateActions()
+    {
+        var row = CurrentCall;
+        _inspectProvider.IsEnabled = row is { ProviderId: > 0 };
+        _inspectKey.IsEnabled = row is { KeyId: > 0 };
+        _inspectValue.IsEnabled = row is { ValueId: > 0 };
+        _analyze.IsEnabled = row is { DurationMs: > 0, Completion: not null };
+    }
     private void ShowCalls()
     {
         var updating = _updating; _updating = true;
@@ -101,7 +125,7 @@ public sealed class ResourceLookupsControl : UserControl
             _detail.Text = row is null ? "Select a request to inspect the actual call path." :
                 $"{row.Key} (key #{row.KeyId}) · {row.Theme} · {row.Status} · {displayed.Length:N0} observed calls" + (path.Length > PathLimit ? " [table limit reached]" : "") +
                 ". Found means this call returned true; a found null is distinct from a miss. Provider order is observed, not inferred. Resource values are never formatted.";
-            _chart.SetLookup(row, displayed, _trace);
+            _chart.SetLookup(row, displayed, _trace); UpdateActions();
         }
         finally { _updating = updating; }
     }
