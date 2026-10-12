@@ -85,6 +85,7 @@ public static class TraceExport
             writer.WriteNumber("pid", 1); writer.WriteNumber("tid", thread); writer.WriteStartObject("args");
             writer.WriteString("name", $"Managed thread {thread}"); writer.WriteEndObject(); writer.WriteEndObject();
         }
+        var resourceLookups = new ResourceLookupIndex(trace);
         var count = 0;
         foreach (var e in trace.Events)
         {
@@ -108,6 +109,13 @@ public static class TraceExport
                 writer.WriteString("route", RoutedDispatchEvent.RouteName(RoutedDispatchEvent.Route(e)));
                 writer.WriteBoolean("handledBefore", RoutedDispatchEvent.HandledBefore(e)); writer.WriteBoolean("handledAfter", RoutedDispatchEvent.HandledAfter(e));
                 writer.WriteBoolean("handledEventsToo", RoutedDispatchEvent.HandledEventsToo(e)); writer.WriteBoolean("returned", RoutedDispatchEvent.Returned(e));
+            }
+            if (ResourceLookupEvent.IsValid(e) && resourceLookups.Find(ResourceLookupEvent.LookupId(e)) is { } lookup)
+            {
+                writer.WriteString("resourceLookupId", lookup.Id.ToString()); writer.WriteString("resourceParentId", lookup.ParentLookupId.ToString());
+                writer.WriteString("resourceKey", lookup.Key); writer.WriteString("resourceTheme", lookup.Theme);
+                writer.WriteString("resourceOutcome", lookup.Status); writer.WriteString("resourceProvider", lookup.Provider);
+                writer.WriteString("resourceResultIdentity", lookup.ValueId.ToString()); writer.WriteBoolean("resourceCaptureIncomplete", lookup.CaptureIncomplete);
             }
             if (trace.SourceSites.TryGetValue(e.NameId, out var site))
             {

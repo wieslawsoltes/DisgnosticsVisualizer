@@ -10,6 +10,7 @@ public sealed record CausalEdge(long Source, long Target, string Kind, bool Infe
 public sealed record AnalysisResult(CostRow[] Costs, Finding[] Findings, CausalEdge[] Edges)
 {
     public RoutedDispatch[] RoutedDispatches { get; init; } = [];
+    public ResourceLookupIndex? ResourceLookups { get; init; }
     public XamlSourceIndex? XamlSources { get; init; }
     public DispatcherOperation[] DispatcherOperations { get; init; } = [];
     public AsyncOperation[] AsyncOperations { get; init; } = [];
@@ -89,7 +90,7 @@ public static class TraceAnalyzer
             findings.Insert(0, new("Warning", "Capture is incomplete",
                 $"{trace.DroppedEvents} dropped events, {trace.MissingBlocks} missing batches, {trace.MetadataDrops} metadata drops, {trace.EvictedEvents} viewer evictions. Absence of an event is not evidence it did not happen.", 0, 0));
         if (trace.ProbeFaults > 0) findings.Insert(0, new("Error", "Instrumentation faults", $"{trace.ProbeFaults} probe faults were contained. Review the weaving manifest and compatibility report.", 0, 0));
-        return new(costs, findings.Take(2000).ToArray(), edges.ToArray()) { RoutedDispatches = global::DiagnosticsVisualizer.Analysis.RoutedDispatches.Analyze(trace), XamlSources = new(trace), DispatcherOperations = dispatcher, AsyncOperations = global::DiagnosticsVisualizer.Analysis.AsyncOperations.Analyze(trace) };
+        return new(costs, findings.Take(2000).ToArray(), edges.ToArray()) { ResourceLookups = new(trace), RoutedDispatches = global::DiagnosticsVisualizer.Analysis.RoutedDispatches.Analyze(trace), XamlSources = new(trace), DispatcherOperations = dispatcher, AsyncOperations = global::DiagnosticsVisualizer.Analysis.AsyncOperations.Analyze(trace) };
     }
     private static long CoveredDuration(TraceEvent parent, List<TraceEvent>? children)
     {
