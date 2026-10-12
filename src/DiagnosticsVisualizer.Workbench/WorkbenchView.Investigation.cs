@@ -6,6 +6,8 @@ namespace DiagnosticsVisualizer.Workbench;
 
 public sealed partial class WorkbenchView
 {
+    private readonly BindingOperationsControl _bindings = new();
+    public void ShowBindings() => _factory.Activate("bindings");
     private readonly RoutedEventsControl _routed = new();
     public void ShowRoutedEvents() => _factory.Activate("routed");
     private readonly StyleEvaluationsControl _styleEvaluations = new();
@@ -19,6 +21,13 @@ public sealed partial class WorkbenchView
     public void ShowXamlOrigins() => _factory.Activate("xaml");
     private void InitializeInvestigation()
     {
+        _factory.RegisterDocument("bindings", "Bindings", _bindings);
+        _commands.Add(("Show Binding operations", "", () => { ShowBindings(); return Task.CompletedTask; }));
+        _commands.Add(("Show Binding expression history", "", () => { ShowBindings(); _bindings.ShowExpressionHistory(); return Task.CompletedTask; }));
+        _bindings.EventSelected += id => _model.SelectEvent(id, false);
+        _bindings.ObjectSelected += id => _model.SelectObject(id, false);
+        _bindings.SourceRequested += id => { _model.SelectEvent(id, false); ShowSources(); };
+        _bindings.RangeRequested += async range => await RunAsync(() => _model.SetRangeAsync(range));
         _commands.Add(("Show Style activation history", "", () => { ShowStyleEvaluations(); _styleEvaluations.ShowActivationHistory(); return Task.CompletedTask; }));
         _commands.Add(("Show Styling evaluations", "", () => { ShowStyleEvaluations(); return Task.CompletedTask; }));
         _styleEvaluations.EventSelected += id => _model.SelectEvent(id, false);
@@ -42,6 +51,7 @@ public sealed partial class WorkbenchView
     }
     private void UpdateInvestigation(TraceView trace, AnalysisResult analysis)
     {
+        _bindings.SetTrace(trace, analysis.BindingOperations ?? new(trace));
         _routed.SetTrace(trace, analysis.RoutedDispatches);
         _styleEvaluations.SetTrace(trace, analysis.StyleEvaluations ?? new(trace));
         _resourceLookups.SetTrace(trace, analysis.ResourceLookups ?? new(trace));
@@ -49,12 +59,9 @@ public sealed partial class WorkbenchView
     }
     private void SelectInvestigation(TraceView trace, TraceEvent? selected, long objectId)
     {
-        _routed.SelectEvent(selected);
-        _styleEvaluations.SelectEvent(selected);
-        _resourceLookups.SelectEvent(selected);
+        _bindings.SelectEvent(selected); _routed.SelectEvent(selected); _styleEvaluations.SelectEvent(selected); _resourceLookups.SelectEvent(selected);
         if (_xamlIndex is null) _xamlIndex = new(trace);
         _xaml.Inspect(_xamlIndex, objectId);
-        // An explicit event selection wins; tree selection with no event resolves a recorded object origin.
         _sources.Inspect(trace, selected ?? _xamlIndex.Find(objectId)?.Event);
     }
 }

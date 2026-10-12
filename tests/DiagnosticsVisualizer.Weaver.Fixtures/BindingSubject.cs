@@ -31,19 +31,19 @@ public static class BindingSubject
     {
         var model = new Model(); var converter = new Converter(); var target = new Border();
         var binding = new Binding(nameof(Model.Value)) { Source = model, Mode = BindingMode.TwoWay, Converter = converter, FallbackValue = "fallback" };
-        var subscription = target.Bind(StyledElement.TagProperty, binding);
+        var subscription = target.Bind(Control.TagProperty, binding);
         if (!Equals(target.Tag, "initial")) throw new InvalidOperationException("Initial binding value changed");
         model.Value = "source"; if (!Equals(target.Tag, "source")) throw new InvalidOperationException("Source update changed");
-        target.SetCurrentValue(StyledElement.TagProperty, "target"); if (!Equals(model.Value, "target")) throw new InvalidOperationException("TwoWay update changed");
+        target.SetCurrentValue(Control.TagProperty, "target"); if (!Equals(model.Value, "target")) throw new InvalidOperationException("TwoWay update changed");
         model.Value = null; if (target.Tag is not null) throw new InvalidOperationException("Null result changed");
         model.Value = "nothing"; if (target.Tag is not null) throw new InvalidOperationException("DoNothing result changed");
         model.Value = "throw"; if (!Equals(target.Tag, "fallback")) throw new InvalidOperationException("Converter fallback changed");
         subscription.Dispose(); var detached = target.Tag; model.Value = "after disposal";
         if (!Equals(detached, target.Tag)) throw new InvalidOperationException("Disposed binding still writes");
-        var missingTarget = new Border(); using var missing = missingTarget.Bind(StyledElement.TagProperty, new Binding("NotAProperty") { Source = model, FallbackValue = "missing" });
+        var missingTarget = new Border(); using var missing = missingTarget.Bind(Control.TagProperty, new Binding("NotAProperty") { Source = model, FallbackValue = "missing" });
         if (!Equals(missingTarget.Tag, "missing")) throw new InvalidOperationException("Missing-node fallback changed");
         var resourceTarget = new Border(); resourceTarget.Resources["BindingProbeKey"] = "resource-one";
-        var resource = resourceTarget.Bind(StyledElement.TagProperty, new DynamicResourceExtension("BindingProbeKey"));
+        var resource = resourceTarget.Bind(Control.TagProperty, new DynamicResourceExtension("BindingProbeKey"));
         if (!Equals(resourceTarget.Tag, "resource-one")) throw new InvalidOperationException("Initial resource binding changed");
         resourceTarget.Resources["BindingProbeKey"] = "resource-two";
         if (!Equals(resourceTarget.Tag, "resource-two")) throw new InvalidOperationException("Resource invalidation changed");
