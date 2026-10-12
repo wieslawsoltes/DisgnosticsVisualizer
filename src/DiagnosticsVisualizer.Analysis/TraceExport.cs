@@ -34,6 +34,16 @@ public static class TraceExport
                 trace.SourceSites.TryGetValue(id, out var site) ? SourceSiteSymbol.Encode(site) : trace.Symbols[id])).ToArray();
             await Write(events, names, Objects(events, snapshot), snapshot).ConfigureAwait(false);
         }
+        // Rebatching removes original sequence gaps and viewer eviction history. Preserve those
+        // facts in an unused metadata symbol instead of inventing target events or inflating drops.
+        if (trace.MissingBlocks != 0 || trace.EvictedEvents != 0)
+        {
+            var usedNames = trace.Symbols.Keys.Concat(trace.SourceSites.Keys).Concat(trace.Events.Select(e => e.NameId)).ToHashSet();
+            var id = int.MaxValue;
+            while (usedNames.Contains(id)) id--;
+            if (id <= 0) throw new InvalidDataException("No unused symbol identity for capture provenance.");
+            await Write([], [new(id, TraceIntegritySymbol.Encode(new(trace.MissingBlocks, trace.EvictedEvents)))], [], null).ConfigureAwait(false);
+        }
         // Retained snapshots must survive an export even when the latest checkpoint correctly
         // observes an empty tree at shutdown. Rebatch by end watermark; preserve every event's
         // original identity/timestamps. This is observation order, not a transactional replay.
@@ -92,6 +102,13 @@ public static class TraceExport
             writer.WriteString("relatedObjectId", e.RelatedId.ToString());
             if (asyncStart || asyncEnd) writer.WriteString("measurement", "Async state-machine lifetime, including suspension; not CPU time");
             if (asyncEnd) writer.WriteString("outcome", ((AsyncOperationOutcome)e.Data1).ToString());
+            if (RoutedDispatchEvent.IsValid(e))
+            {
+                writer.WriteString("routedDispatchId", e.Data1.ToString()); writer.WriteString("routedStep", RoutedDispatchEvent.Kind(e).ToString());
+                writer.WriteString("route", RoutedDispatchEvent.RouteName(RoutedDispatchEvent.Route(e)));
+                writer.WriteBoolean("handledBefore", RoutedDispatchEvent.HandledBefore(e)); writer.WriteBoolean("handledAfter", RoutedDispatchEvent.HandledAfter(e));
+                writer.WriteBoolean("handledEventsToo", RoutedDispatchEvent.HandledEventsToo(e)); writer.WriteBoolean("returned", RoutedDispatchEvent.Returned(e));
+            }
             if (trace.SourceSites.TryGetValue(e.NameId, out var site))
             {
                 writer.WriteString("source", site.Location); writer.WriteString("methodIdentity", site.Identity);
@@ -115,7 +132,7 @@ public static class TraceExport
         writer.WriteEndArray(); writer.WriteStartObject("diagnosticsVisualizer");
         writer.WriteString("session", trace.SessionId); writer.WriteNumber("droppedEvents", trace.DroppedEvents);
         writer.WriteNumber("missingBlocks", trace.MissingBlocks); writer.WriteNumber("probeFaults", trace.ProbeFaults);
-        writer.WriteNumber("evictedEvents", trace.EvictedEvents); writer.WriteEndObject(); writer.WriteEndObject();
+        writer.WriteNumber("metadataDrops", trace.MetadataDrops); writer.WriteNumber("evictedEvents", trace.EvictedEvents); writer.WriteEndObject(); writer.WriteEndObject();
         await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
     private static void WriteFlow(Utf8JsonWriter writer, TraceView trace, long id, int thread, long timestamp, string phase)
