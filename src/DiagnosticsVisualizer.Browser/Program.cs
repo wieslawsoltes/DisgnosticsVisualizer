@@ -49,7 +49,8 @@ public static partial class Program
         var activeDocuments = Traverse(root).OfType<IDocumentDock>().Select(dock => dock.ActiveDockable?.Id ?? "").ToArray();
         var overview = visuals.OfType<ActivityOverview>().FirstOrDefault();
         var overviewPosition = overview?.TranslatePoint(default, view!) ?? default;
-        Application.Current!.Resources.TryGetResource("DockSurfaceWorkbenchBrush", ThemeVariant.Dark, out var surface);
+        object? surface = null;
+        visuals.OfType<ThemeVariantScope>().FirstOrDefault()?.TryFindResource("DockSurfaceWorkbenchBrush", out surface);
         var eventGrid = visuals.OfType<DataGrid>().FirstOrDefault(grid => grid.Name == "EventsGrid");
         return JsonSerializer.Serialize(new
         {
@@ -63,6 +64,8 @@ public static partial class Program
             theme = view?.ThemeName, dockSurface = (surface as ISolidColorBrush)?.Color.ToString(),
             overview = new { x = overviewPosition.X, y = overviewPosition.Y, width = overview?.Bounds.Width ?? 0, height = overview?.Bounds.Height ?? 0 },
             statisticsVisible = visuals.OfType<DataGrid>().Any(grid => grid.Name == "StatisticsGrid" && grid.IsEffectivelyVisible),
+            dispatcherOperations = visuals.OfType<DispatcherOperationsControl>().FirstOrDefault()?.OperationCount ?? 0,
+            xamlOrigins = visuals.OfType<XamlOriginsControl>().FirstOrDefault()?.OriginCount ?? 0,
             sceneVisible = visuals.OfType<LayoutSceneControl>().Any(scene => scene.IsEffectivelyVisible),
             filteredEvents = eventGrid?.ItemsSource?.Cast<object>().Count() ?? 0,
             eventQuery = visuals.OfType<TextBox>().FirstOrDefault(text => text.Watermark?.StartsWith("Query:", StringComparison.Ordinal) == true)?.Text,

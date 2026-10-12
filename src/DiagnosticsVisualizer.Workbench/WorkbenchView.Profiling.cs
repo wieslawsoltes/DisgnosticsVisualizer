@@ -117,6 +117,8 @@ public sealed partial class WorkbenchView
         foreach (var (id, title, path) in new[] {
             ("properties", "Properties and resources", "M2 3H14M2 8H14M2 13H14M5 1V5M11 6V10M6 11V15"),
             ("async", "Async operations", "M1 8H4L6 3L10 13L12 8H15M3 2V5M13 11V14"),
+            ("dispatcher", "Dispatcher queue", "M1 3H7M1 8H7M1 13H7M10 3H15V13H10ZM12 5V10"),
+            ("xaml", "XAML origins", "M2 1H10L14 5V15H2ZM10 1V5H14M5 8L3 10L5 12M11 8L13 10L11 12"),
             ("sources", "Sources (F12)", "M5 2L1 8L5 14M11 2L15 8L11 14M9 1L7 15"),
             ("details", "Event details", "M8 2A6 6 0 1 0 8 14A6 6 0 1 0 8 2ZM8 7V11M8 4V5"),
             ("bookmarks", "Bookmarks", "M4 1H12V15L8 11L4 15Z"),

@@ -77,7 +77,7 @@ public sealed partial class WorkbenchView : UserControl, IDisposable
             ["timeline"] = ChartPanel(_timeline, _timeline.Fit), ["flame"] = ChartPanel(_flame, _flame.Fit),
             ["causality"] = ChartPanel(_causal, _causal.Fit), ["systems"] = new ScrollViewer { Content = _systems },
             ["comparison"] = ComparisonPanel(), ["visual"] = TreePanel(_visual), ["logical"] = TreePanel(_logical),
-            ["dependencies"] = _dependencies, ["async"] = _asyncOperations, ["sources"] = _sources, ["properties"] = _properties, ["details"] = _details, ["events"] = EventPanel(),
+            ["dispatcher"] = _dispatcher, ["xaml"] = _xaml, ["dependencies"] = _dependencies, ["async"] = _asyncOperations, ["sources"] = _sources, ["properties"] = _properties, ["details"] = _details, ["events"] = EventPanel(),
             ["findings"] = _findings, ["costs"] = CostPanel(),
             ["topdown"] = _topDown, ["bottomup"] = _bottomUp, ["statistics"] = _statistics, ["threads"] = _threads,
             ["scene"] = _scene, ["history"] = HistoryPanel(), ["bookmarks"] = _bookmarks,
@@ -89,8 +89,8 @@ public sealed partial class WorkbenchView : UserControl, IDisposable
         var rangeBar = RangeBar(); Grid.SetRow(rangeBar, 4); _root.Children.Add(rangeBar);
         var footer = BuildFooter(); Grid.SetRow(footer, 6); _root.Children.Add(footer);
         _overlay = new Border { Background = new SolidColorBrush(Color.Parse("#AA070B12")), IsVisible = false, ZIndex = 1000 };
-        Grid.SetRowSpan(_overlay, 7); _root.Children.Add(_overlay); Content = _root;
-        WireSelection(); RegisterCommands(); RegisterProfilingCommands();
+        Grid.SetRowSpan(_overlay, 7); _root.Children.Add(_overlay); Content = WorkbenchStyles.CreateScope(_root);
+        WireSelection(); RegisterCommands(); RegisterProfilingCommands(); InitializeInvestigation();
         _commands.Add(("Show Sources", "F12", () => { _factory.Activate("sources"); return Task.CompletedTask; }));
         _details.SourceRequested += () => _factory.Activate("sources");
         _commands.Add(("Show Async operations", "", () => { _factory.Activate("async"); return Task.CompletedTask; }));
@@ -132,7 +132,7 @@ public sealed partial class WorkbenchView : UserControl, IDisposable
         {
             _timeline.Trace = trace; _flame.Trace = trace; _causal.SetTrace(trace, analysis, _model.SelectedEventId); _systems.SetTrace(trace, analysis);
             _visual.SetSnapshot(trace.Snapshot); _logical.SetSnapshot(trace.Snapshot); _costChart.Rows = analysis.Costs;
-            _asyncOperations.SetOperations(analysis.AsyncOperations, trace);
+            _asyncOperations.SetOperations(analysis.AsyncOperations, trace); UpdateInvestigation(trace, analysis);
             _costs.ItemsSource = analysis.Costs; _findings.ItemsSource = analysis.Findings;
             _count.Text = trace.Events.Length.ToString("N0");
             _duration.Text = trace.Events.Length == 0 ? "0 s" : $"{trace.Milliseconds(trace.Events.Max(e => e.End) - trace.Events.Min(e => e.Timestamp)) / 1000:F2} s";
@@ -153,7 +153,7 @@ public sealed partial class WorkbenchView : UserControl, IDisposable
         _properties.Inspect(_historicalSnapshot is null ? trace : trace with { Snapshot = _historicalSnapshot }, objectId); _details.Inspect(trace, selected);
         _scene.SetSnapshot(_historicalSnapshot ?? trace.Snapshot, objectId);
         _dependencies.Inspect(trace, objectId, _historicalSnapshot);
-        _sources.Inspect(trace, selected);
+        SelectInvestigation(trace, selected, objectId);
         if (selected is { } e)
         {
             _causal.SelectEvent(e.Id);

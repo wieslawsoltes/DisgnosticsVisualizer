@@ -97,6 +97,31 @@ public sealed partial class WorkloadWindow : Window
         };
         await animation.RunAsync(button);
         await ExerciseAsync();
+        await ExerciseDispatcherAsync();
+    }
+    private async Task ExerciseDispatcherAsync()
+    {
+        var completed = 0; var abortedInvocations = 0;
+        var aborted = Dispatcher.UIThread.InvokeAsync(() => abortedInvocations++, DispatcherPriority.Background);
+        if (!aborted.Abort()) throw new InvalidOperationException("Queued operation did not abort.");
+        var promoted = Dispatcher.UIThread.InvokeAsync(() => completed++, DispatcherPriority.Inactive);
+        promoted.Priority = DispatcherPriority.Background;
+        await promoted;
+        await Task.Run(async () =>
+        {
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                _model.Title = "Dispatcher cross-thread callback"; completed++;
+            }, DispatcherPriority.Background);
+        });
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync((Action)(() => throw new InvalidOperationException("Expected callback failure")));
+            throw new InvalidOperationException("Callback failure was swallowed.");
+        }
+        catch (InvalidOperationException error) when (error.Message == "Expected callback failure") { }
+        if (completed != 2 || abortedInvocations != 0) throw new InvalidOperationException("Dispatcher instrumentation changed callback behavior.");
+        Console.WriteLine("DISPATCHER_WORKLOAD_OK completed=2 aborted=0 fault=observed");
     }
     private async Task ExerciseAsync()
     {

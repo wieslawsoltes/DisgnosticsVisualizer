@@ -23,7 +23,8 @@ public static class DemoTraceFactory
             new(19, "Compositor.Commit"), new(20, "ServerCompositor.Render"),
             new(21, "Interactive.RaiseEvent: PointerPressed"), new(22, "!XamlIlPopulate: DashboardView"),
             new(23, "StaticResource.ProvideValue: CardPadding"), new(24, "Application.Frame"),
-            new(25, "Dispatcher.Enqueue"), new(26, "Trace checkpoint"), new(27, "DashboardViewModel.RefreshAsync")
+            new(25, "Dispatcher.Enqueue"), new(26, "Trace checkpoint"), new(27, "DashboardViewModel.RefreshAsync"),
+            new(28, SourceSiteSymbol.Encode(new("SyntheticDemo", Guid.Parse("a0a5cc80-3130-484c-ac81-dc83cd4d08ea"), 0x06000001, "Dashboard.XamlIlPopulate", "SyntheticDashboard.axaml", 12, 1, 12, 20, "", "", "", false) { IlOffset = 16, Mapping = SourceMappingKind.XamlConstruction }))
         };
         var nodes = new List<NodeSnapshot>
         {
@@ -61,11 +62,17 @@ public static class DemoTraceFactory
         var objects = nodes.Select(n => new ObjectInfo(n.Id, n.Type, string.IsNullOrEmpty(n.Name) ? n.Type : n.Name))
             .Concat([new ObjectInfo(100, "ControlTheme", "Fluent Button"), new(101, "Style", "Button.primary:pointerover"),
                 new(102, "Resource", "SystemAccentColor"), new(103, "DashboardViewModel", "DashboardViewModel"),
-                new(104, "ObservableCollection<Result>", "Results"), new(105, "DataTemplate", "ResultCardTemplate")]).ToArray();
+                new(104, "ObservableCollection<Result>", "Results"), new(105, "DataTemplate", "ResultCardTemplate"), new(106, "DispatcherOperation", "Synthetic dispatcher admission")]).ToArray();
         var events = new List<TraceEvent>(frames * 36); long id = 0;
+        events.Add(new(++id, 0, 0, 0, 5, 0, 1, 28, Subsystem.Xaml, TraceEventKind.Link, XamlObjectEvent.ConstructionCode));
         for (var f = 0; f < frames; f++)
         {
             var start = f * 16667L; var heavy = f % 43 == 12; var measure = heavy ? 14200L : 2400L + f % 7 * 140;
+            var queue = ++id;
+            events.Add(new(queue, 0, start, 0, 106, 0, 8, 25, Subsystem.Dispatcher, TraceEventKind.Link, DispatcherEvent.QueuedCode, DispatcherEvent.PackPriority(-6, false)));
+            events.Add(new(++id, queue, start + 30, 0, 106, 0, 1, 25, Subsystem.Dispatcher, TraceEventKind.Link, DispatcherEvent.PriorityCode, DispatcherEvent.PackPriority(1, true)));
+            events.Add(new(++id, queue, start + 50, 0, 106, 0, 1, 1, Subsystem.Dispatcher, TraceEventKind.Link, DispatcherEvent.StartedCode, DispatcherEvent.PackPriority(1, true)));
+            events.Add(new(++id, queue, start + 50 + measure, 0, 106, 0, 1, 1, Subsystem.Dispatcher, TraceEventKind.Link, DispatcherEvent.FinishedCode, (long)DispatcherOutcome.Returned));
             var root = ++id; var dispatcher = ++id;
             events.Add(new(root, 0, start, measure + 11200, 1, 0, 1, 24, Subsystem.Application));
             events.Add(new(dispatcher, root, start + 50, measure + 10700, 1, 0, 1, 1, Subsystem.Dispatcher));

@@ -15,6 +15,7 @@ public sealed class PanelTool : Tool { public required Control View { get; init;
 /// <summary>One reusable control per panel. Saved layouts contain identities, never view instances or credentials.</summary>
 public sealed class WorkbenchDockFactory(IReadOnlyDictionary<string, Control> views) : Factory
 {
+    private readonly IReadOnlyDictionary<string, Control> _scopedViews = views.ToDictionary(p => p.Key, p => (Control)WorkbenchStyles.CreateScope(p.Value));
     private readonly Dictionary<string, IDockable> _panels = new(StringComparer.Ordinal);
     private IRootDock? _root;
     public IReadOnlyDictionary<string, IDockable> Panels => _panels;
@@ -22,17 +23,17 @@ public sealed class WorkbenchDockFactory(IReadOnlyDictionary<string, Control> vi
     public IRootDock CreateLayout(WorkspacePreset preset)
     {
         _panels.Clear();
-        foreach (var (id, view) in views)
+        foreach (var (id, view) in _scopedViews)
         {
             var title = id switch
             {
-                "dependencies" => "Dependencies", "async" => "Async operations", "sources" => "Sources", "timeline" => "Timeline", "flame" => "Flame chart", "causality" => "Causal chain", "systems" => "Subsystems",
+                "dispatcher" => "Dispatcher queue", "xaml" => "XAML origins", "dependencies" => "Dependencies", "async" => "Async operations", "sources" => "Sources", "timeline" => "Timeline", "flame" => "Flame chart", "causality" => "Causal chain", "systems" => "Subsystems",
                 "comparison" => "Compare", "visual" => "Visual tree", "logical" => "Logical tree", "properties" => "Properties & resources",
                 "details" => "Event details", "events" => "Event log", "findings" => "Findings", "costs" => "Hot paths",
                 "topdown" => "Call tree", "bottomup" => "Bottom-up", "statistics" => "Statistics", "threads" => "Thread activity",
                 "scene" => "Layout scene", "history" => "Snapshot history", "bookmarks" => "Bookmarks", "health" => "Capture health", _ => id
             };
-            IDockable panel = id is "dependencies" or "async" or "sources" or "timeline" or "flame" or "causality" or "systems" or "comparison" or "topdown" or "bottomup" or "statistics" or "scene" or "history"
+            IDockable panel = id is "dispatcher" or "xaml" or "dependencies" or "async" or "sources" or "timeline" or "flame" or "causality" or "systems" or "comparison" or "topdown" or "bottomup" or "statistics" or "scene" or "history"
                 ? new PanelDocument { Id = id, Title = title, View = view, CanClose = false, CanFloat = true }
                 : new PanelTool { Id = id, Title = title, View = view, CanClose = false, CanFloat = true, CanPin = true };
             _panels[id] = panel;
@@ -47,12 +48,13 @@ public sealed class WorkbenchDockFactory(IReadOnlyDictionary<string, Control> vi
             {
                 WorkspacePreset.Profile => Panels("flame", "topdown", "bottomup", "statistics", "async"),
                 WorkspacePreset.Compare => Panels("comparison", "timeline"),
+                WorkspacePreset.Investigate => Panels("dispatcher", "xaml", "dependencies", "sources"),
                 _ => Panels("timeline", "scene", "causality")
             } };
         var bottom = new ToolDock { Id = "bottom", Alignment = Alignment.Bottom, Proportion = .27,
             VisibleDockables = Panels("events", "findings", "costs", "threads"), IsCollapsable = false };
         left.ActiveDockable = _panels.GetValueOrDefault("visual"); right.ActiveDockable = _panels.GetValueOrDefault(preset == WorkspacePreset.Profile ? "details" : "properties");
-        documents.ActiveDockable = _panels.GetValueOrDefault(preset switch { WorkspacePreset.Profile => "flame", WorkspacePreset.Compare => "comparison", _ => "timeline" });
+        documents.ActiveDockable = _panels.GetValueOrDefault(preset switch { WorkspacePreset.Profile => "flame", WorkspacePreset.Compare => "comparison", WorkspacePreset.Investigate => "dispatcher", _ => "timeline" });
         bottom.ActiveDockable = _panels.GetValueOrDefault(preset == WorkspacePreset.Profile ? "costs" : "findings");
         var center = new ProportionalDock { Id = "center", Orientation = Dock.Model.Core.Orientation.Vertical, Proportion = preset == WorkspacePreset.Inspect ? .59 : .63,
             VisibleDockables = CreateList<IDockable>(documents, new ProportionalDockSplitter(), bottom) };
@@ -64,6 +66,14 @@ public sealed class WorkbenchDockFactory(IReadOnlyDictionary<string, Control> vi
         root.TopPinnedDockables = CreateList<IDockable>(); root.BottomPinnedDockables = CreateList<IDockable>();
         return root;
     }
+    private static IHostWindow CreateManagedHost()
+    {
+        return new ManagedHostWindow();
+    }
+    private static IHostWindow CreateNativeHost()
+    {
+        var host = new HostWindow { Title = "Diagnostics Visualizer" }; WorkbenchStyles.Decorate(host); return host;
+    }
     public override void InitLayout(IDockable layout)
     {
         _root = layout as IRootDock;
@@ -71,7 +81,7 @@ public sealed class WorkbenchDockFactory(IReadOnlyDictionary<string, Control> vi
         DockableLocator = _panels.ToDictionary(pair => pair.Key, pair => (Func<IDockable?>)(() => pair.Value));
         DockableLocator["Root"] = () => layout;
         HostWindowLocator = new Dictionary<string, Func<IHostWindow?>>
-        { [nameof(IDockWindow)] = () => DockSettings.UseManagedWindows ? new ManagedHostWindow() : new HostWindow { Title = "Diagnostics Visualizer" } };
+        { [nameof(IDockWindow)] = () => DockSettings.UseManagedWindows ? CreateManagedHost() : CreateNativeHost() };
         base.InitLayout(layout);
     }
     public override void FloatDockable(IDockable dockable)
