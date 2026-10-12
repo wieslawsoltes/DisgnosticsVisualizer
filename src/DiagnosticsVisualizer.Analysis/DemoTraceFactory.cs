@@ -11,6 +11,7 @@ public static class DemoTraceFactory
         var session = Guid.Parse("75d8a72c-581b-4b6a-a9ad-98ead2cefc10");
         var symbols = new[]
         {
+            new Symbol(38, "Style.TryAttach"), new(39, "Selector.Match"), new(40, "StyleInstance.GetIsActive"),
             new Symbol(33, "ResourceNodeExtensions.TryFindResource"), new(34, "ResourceDictionary.TryGetResource"),
             new(35, "key: SystemAccentColor"), new(36, "key: Dark"), new(37, "key: OptionalAccent"),
             new Symbol(1, "DispatcherOperation.InvokeCore"), new(2, "AnimationInstance.Step"),
@@ -150,6 +151,25 @@ public static class DemoTraceFactory
             Span(19, Subsystem.Compositor, 8900 + measure, 400, 1);
             events.Add(new(++id, 0, start + 9400 + measure, 1600, 1, 0, 8, 20, Subsystem.Compositor));
         }
+        // Explicitly synthetic conditional selector and later frame observations. No winner is synthesized.
+        for (var i = 0; i < 4; i++)
+        {
+            var tick = i * 500000L; var attach = ++id; var match = ++id;
+            void Observation(long call, long parent, long start, long duration, StyleEvaluationKind kind, long subject, long target, long context,
+                bool input, StyleEvaluationOutcome outcome, long activator, bool changed)
+            {
+                var category = StyleEvaluationEvent.Category(kind);
+                var symbol = kind == StyleEvaluationKind.Attach ? 38 : kind == StyleEvaluationKind.Match ? 39 : 40;
+                events.Add(new(++id, call, start, 0, subject, target, 1, symbol, category, TraceEventKind.Link, StyleEvaluationEvent.BeginCode(kind, input), parent));
+                events.Add(new(++id, call, start, 0, context, 0, 1, symbol, category, TraceEventKind.Link, StyleEvaluationEvent.ContextCode(kind), parent));
+                events.Add(new(call, parent, start, duration, subject, activator, 1, symbol, category, TraceEventKind.Span, StyleEvaluationEvent.EndCode(kind, outcome, changed), parent));
+            }
+            Observation(attach, 0, tick, 1200, StyleEvaluationKind.Attach, 101, 5, 1, false, StyleEvaluationOutcome.Conditional, 0, false);
+            Observation(match, attach, tick + 30, 180, StyleEvaluationKind.Match, 113, 5, 101, true, StyleEvaluationOutcome.Conditional, 114, false);
+            Observation(++id, 0, tick + 1500, 90, StyleEvaluationKind.Frame, 115, 0, 101, false,
+                i % 2 == 0 ? StyleEvaluationOutcome.Inactive : StyleEvaluationOutcome.Active, 114, i > 0);
+        }
+        objects = [..objects, new(113, "SyntheticSelector", "Demonstration selector"), new(114, "SyntheticActivator", "Demonstration activator"), new(115, "SyntheticStyleFrame", "Demonstration frame")];
         var blocks = new List<TraceBlock>(); var chunks = events.Chunk(2048).ToArray();
         for (var i = 0; i < chunks.Length; i++) blocks.Add(new()
         {

@@ -49,7 +49,7 @@ public sealed class ResourceLookupsControl : UserControl
         var lower = new Grid { RowDefinitions = new("Auto,Auto,*,5,*") }; lower.Children.Add(_detail);
         lower.RowDefinitions[2].MinHeight = 48;
         lower.RowDefinitions[4].MinHeight = 52;
-        var actions = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new(10, 3) };
+        var actions = new WrapPanel { Classes = { "dv-investigation-actions" }, Orientation = Orientation.Horizontal, Margin = new(10, 3) };
         _inspectProvider.Click += (_, _) => { if (CurrentCall is { ProviderId: > 0 } r) ObjectSelected?.Invoke(r.ProviderId); };
         _inspectKey.Click += (_, _) => { if (CurrentCall is { KeyId: > 0 } r) ObjectSelected?.Invoke(r.KeyId); };
         _inspectValue.Click += (_, _) => { if (CurrentCall is { ValueId: > 0 } r) ObjectSelected?.Invoke(r.ValueId); };
