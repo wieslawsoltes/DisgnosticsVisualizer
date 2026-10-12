@@ -13,7 +13,7 @@ add_library(DiagnosticsVisualizerProfiler SHARED profiler.cpp capture.cpp pal_co
   "${SDK_TEST}/profiler.cpp" "${SDK_TEST}/guids.cpp"
   "${REWRITER_DIR}/ilrewriter.cpp" "${REWRITER_DIR}/sigparse.cpp")
 target_compile_features(DiagnosticsVisualizerProfiler PRIVATE cxx_std_20)
-target_compile_definitions(DiagnosticsVisualizerProfiler PRIVATE SOS_INCLUDE HOST_64BIT)
+target_compile_definitions(DiagnosticsVisualizerProfiler PRIVATE SOS_INCLUDE HOST_64BIT NOMINMAX)
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
   target_compile_definitions(DiagnosticsVisualizerProfiler PRIVATE HOST_AMD64 TARGET_AMD64)
 elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
