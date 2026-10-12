@@ -10,7 +10,9 @@ page.on('pageerror', error => errors.push(String(error)));
 page.on('response', response => { if (response.status() >= 400) errors.push(`HTTP ${response.status()} ${response.url()}`); });
 const health = () => page.evaluate(() => globalThis.getDiagnosticsVisualizerHealth());
 async function ready() {
-  await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth?.().visualCount > 100, null, { timeout: 180000 });
+  await page.waitForFunction(() => document.documentElement.dataset.viewerReady === 'true' && globalThis.getDiagnosticsVisualizerHealth?.().visualCount > 100 && globalThis.getDiagnosticsVisualizerHealth().overview.width > 1000, null, { timeout: 180000 });
+  // A populated visual tree can precede its first arranged/input-ready browser frame.
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 }
 async function command(text) {
   await page.keyboard.press('Control+Shift+P');
