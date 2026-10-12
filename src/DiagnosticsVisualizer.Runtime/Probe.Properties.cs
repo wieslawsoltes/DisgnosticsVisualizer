@@ -65,7 +65,20 @@ public static partial class Probe
         if (!typeof(T).IsValueType)
         {
             object? reference = value;
-            return reference is null ? new(PropertyValueKind.Null) : new(PropertyValueKind.Reference, ObjectId: session.GetObjectId(reference));
+            if (reference is null) return new(PropertyValueKind.Null);
+            if (reference is string) return new(PropertyValueKind.Redacted);
+            if (!reference.GetType().IsValueType) return new(PropertyValueKind.Reference, ObjectId: session.GetObjectId(reference));
+            if (!session.Options.CapturePropertyScalars) return new(PropertyValueKind.Redacted);
+            // Values passed through object APIs are already boxed; inspect only known primitives, never re-box.
+            return reference switch
+            {
+                bool v => new(PropertyValueKind.Boolean, v ? 1 : 0), int v => new(PropertyValueKind.Signed, v), long v => new(PropertyValueKind.Signed, v),
+                short v => new(PropertyValueKind.Signed, v), sbyte v => new(PropertyValueKind.Signed, v),
+                uint v => new(PropertyValueKind.Unsigned, v), ulong v => new(PropertyValueKind.Unsigned, unchecked((long)v)),
+                ushort v => new(PropertyValueKind.Unsigned, v), byte v => new(PropertyValueKind.Unsigned, v),
+                double v => new(PropertyValueKind.Float64, BitConverter.DoubleToInt64Bits(v)), float v => new(PropertyValueKind.Float32, BitConverter.SingleToInt32Bits(v)),
+                _ => new(PropertyValueKind.Redacted)
+            };
         }
         if (!session.Options.CapturePropertyScalars) return new(PropertyValueKind.Redacted);
         if (typeof(T) == typeof(bool)) return new(PropertyValueKind.Boolean, Unsafe.As<T, bool>(ref value) ? 1 : 0);
@@ -122,6 +135,7 @@ public ref struct PropertyOperationScope
         PropertyOperationKind operation, int flags, long restore, TraceContext flow)
     { Session = session; Writer = writer; Id = id; Parent = parent; TargetId = target; PropertyId = property; NameId = name; Operation = operation; Flags = flags; Restore = restore; PreviousFlow = flow; Start = Stopwatch.GetTimestamp(); }
     public void Value<T>(int phase, T value, bool available = true) => Probe.PropertyValue(ref this, phase, value, available);
+    public void ObserveValue<T>(T value, bool oldValue) => Value(oldValue ? 3 : 4, value);
     public void Returned() => Outcome = PropertyOperationOutcome.Returned;
     public void DirectResult(bool changed) => Outcome = changed ? PropertyOperationOutcome.Changed : PropertyOperationOutcome.Unchanged;
     public void Dispose() => Probe.EndProperty(ref this);
