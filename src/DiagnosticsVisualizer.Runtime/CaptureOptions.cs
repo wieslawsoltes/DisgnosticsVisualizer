@@ -14,6 +14,8 @@ public sealed record CaptureOptions
     public bool TrackAsyncOperations { get; init; }
     /// <summary>Opt-in object-to-XAML construction/population observations from portable PDBs.</summary>
     public bool TrackXamlObjects { get; init; }
+    /// <summary>Opt-in dispatch, handler invocation, handled-state and skipped-route diagnostics.</summary>
+    public bool TrackRoutedEvents { get; init; }
     /// <summary>Opt-in admitted-queue/callback/abort markers with weak work-item state.</summary>
     public bool TrackDispatcherOperations { get; init; }
     public int SampleEvery { get; init; } = 1;
@@ -57,7 +59,8 @@ public sealed record CaptureOptions
             FlowExecutionContext = Boolean("AVTRACE_FLOW_EXECUTION_CONTEXT"),
             TrackAsyncOperations = Boolean("AVTRACE_ASYNC_OPERATIONS"),
             TrackXamlObjects = Boolean("AVTRACE_XAML_OBJECTS"),
-            TrackDispatcherOperations = Boolean("AVTRACE_DISPATCHER_OPERATIONS")
+            TrackDispatcherOperations = Boolean("AVTRACE_DISPATCHER_OPERATIONS"),
+            TrackRoutedEvents = Boolean("AVTRACE_ROUTED_EVENTS")
         };
         options.Validate(); return options;
     }

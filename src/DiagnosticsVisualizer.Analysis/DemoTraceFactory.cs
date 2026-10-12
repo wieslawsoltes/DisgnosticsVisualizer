@@ -24,6 +24,7 @@ public static class DemoTraceFactory
             new(21, "Interactive.RaiseEvent: PointerPressed"), new(22, "!XamlIlPopulate: DashboardView"),
             new(23, "StaticResource.ProvideValue: CardPadding"), new(24, "Application.Frame"),
             new(25, "Dispatcher.Enqueue"), new(26, "Trace checkpoint"), new(27, "DashboardViewModel.RefreshAsync"),
+            new(29, "PointerPressed"), new(30, "Dashboard.OnPreviewPointer"), new(31, "Button.OnPointerPressed"), new(32, "Dashboard.OnBubblePointer"),
             new(28, SourceSiteSymbol.Encode(new("SyntheticDemo", Guid.Parse("a0a5cc80-3130-484c-ac81-dc83cd4d08ea"), 0x06000001, "Dashboard.XamlIlPopulate", "SyntheticDashboard.axaml", 12, 1, 12, 20, "", "", "", false) { IlOffset = 16, Mapping = SourceMappingKind.XamlConstruction }))
         };
         var nodes = new List<NodeSnapshot>
@@ -62,7 +63,7 @@ public static class DemoTraceFactory
         var objects = nodes.Select(n => new ObjectInfo(n.Id, n.Type, string.IsNullOrEmpty(n.Name) ? n.Type : n.Name))
             .Concat([new ObjectInfo(100, "ControlTheme", "Fluent Button"), new(101, "Style", "Button.primary:pointerover"),
                 new(102, "Resource", "SystemAccentColor"), new(103, "DashboardViewModel", "DashboardViewModel"),
-                new(104, "ObservableCollection<Result>", "Results"), new(105, "DataTemplate", "ResultCardTemplate"), new(106, "DispatcherOperation", "Synthetic dispatcher admission")]).ToArray();
+                new(104, "ObservableCollection<Result>", "Results"), new(105, "DataTemplate", "ResultCardTemplate"), new(106, "DispatcherOperation", "Synthetic dispatcher admission"), new(107, "RoutedEvent", "Synthetic PointerPressed")]).ToArray();
         var events = new List<TraceEvent>(frames * 36); long id = 0;
         events.Add(new(++id, 0, 0, 0, 5, 0, 1, 28, Subsystem.Xaml, TraceEventKind.Link, XamlObjectEvent.ConstructionCode));
         for (var f = 0; f < frames; f++)
@@ -80,6 +81,26 @@ public static class DemoTraceFactory
                 => events.Add(new(++id, parent == 0 ? dispatcher : parent, start + offset, duration, obj, 0, thread, symbol, category));
             Span(2, Subsystem.Animation, 100, 230, 5);
             Span(21, Subsystem.RoutedEvents, 340, 120, 5);
+            if (f % 15 == 0)
+            {
+                // Explicitly synthetic route observations, with exact per-dispatch grouping and nesting.
+                var routeId = ++id;
+                events.Add(new(routeId, dispatcher, start + 340, 120, 5, 107, 1, 29, Subsystem.RoutedEvents, TraceEventKind.Span,
+                    RoutedDispatchEvent.Pack(RoutedStepKind.Dispatch, 6, false, false, false, true), routeId));
+                events.Add(new(++id, routeId, start + 340, 0, 5, 107, 1, 29, Subsystem.RoutedEvents, TraceEventKind.Link,
+                    RoutedDispatchEvent.Pack(RoutedStepKind.Begin, 6, false, false, false, false), routeId));
+                void Step(int symbol, long target, int phase, long offset, long duration, RoutedStepKind kind, bool before, bool after, bool too = false)
+                    => events.Add(new(++id, routeId, start + offset, duration, target, 5, 1, symbol, Subsystem.RoutedEvents,
+                        kind is RoutedStepKind.SkippedHandled or RoutedStepKind.SkippedRoute ? TraceEventKind.Instant : TraceEventKind.Span,
+                        RoutedDispatchEvent.Pack(kind, phase, before, after, too, kind is not (RoutedStepKind.SkippedHandled or RoutedStepKind.SkippedRoute)), routeId));
+                Step(29, 1, 2, 341, 4, RoutedStepKind.ClassListeners, false, false);
+                Step(30, 1, 2, 347, 20, RoutedStepKind.Handler, false, true);
+                Step(31, 5, 2, 370, 0, RoutedStepKind.SkippedHandled, true, true);
+                Step(31, 5, 2, 373, 18, RoutedStepKind.Handler, true, false, true);
+                Step(31, 5, 4, 395, 23, RoutedStepKind.Handler, false, false);
+                Step(32, 1, 4, 425, 22, RoutedStepKind.Handler, false, false);
+            }
+
             if (f % 30 == 0)
             {
                 var operation = ++id;

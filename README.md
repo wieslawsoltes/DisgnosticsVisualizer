@@ -4,9 +4,17 @@ A cross-subsystem Avalonia trace recorder, inspector and Rider-style docking wor
 
 [Browser workbench](https://wieslawsoltes.github.io/DisgnosticsVisualizer/) · [Build/integration](https://github.com/wieslawsoltes/DisgnosticsVisualizer/actions/workflows/build.yml) · [Browser verification/deployment](https://github.com/wieslawsoltes/DisgnosticsVisualizer/actions/workflows/browser.yml)
 
-**0.1.0-alpha.7.** An actively validated implementation, not a claim of complete coverage of every Avalonia release or Chrome DevTools feature. The browser starts with a labelled synthetic example; it never pretends to be attached to an application. Check the deployment workflow for the current publication status.
+**0.1.0-alpha.8.** An actively validated implementation, not a claim of complete coverage of every Avalonia release or Chrome DevTools feature. The browser starts with a labelled synthetic example; it never pretends to be attached to an application. Check the deployment workflow for the current publication status.
 
-### New in alpha.7
+### New in alpha.8
+
+**Routed events** now records real dispatch/handler propagation with Direct/Tunnel/Bubble phases, before/after handled state, route/handled skips and exceptional exits. It preserves typed and reflective callback exception behavior and observes aggregate class notifications without replacing callbacks. Enable `AVTRACE_ROUTED_EVENTS=1` on instrumented output; cold metadata registration allocates, while the warmed default capture path has strict zero-managed-allocation tests.
+
+The shared route explorer provides dispatch filters, a 96-step bounded timeline, full retained-step tables, target/range navigation, and integration with Investigate. **Alt+Left / Alt+Right** navigate a transient, bounded event/object selection history. Dock's scoped Rider Dark compact palette is retained with shared table/input styles. Existing saved workspace topology remains compatible.
+
+Binary sharing now preserves original missing-batch and viewer-eviction evidence across rebatching and repeated export; it does not invent target events or turn incomplete traces into apparently complete recordings. Chrome export includes routed fields and all integrity counters. See [routed propagation, navigation and integrity](docs/routed-events.md) for exact semantics and compatibility limits.
+
+### Previously in alpha.7
 
 **XAML origins** connect successful object construction and compiled root population to original portable-PDB sequence points and IL offsets. Repeated template instances retain distinct identities. Tree selection can reveal the latest retained origin in Sources; source text is chosen explicitly and checksum-verified, never reconstructed or automatically fetched from a trace. Enable `AVTRACE_XAML_OBJECTS=1` on deep-instrumented output and keep PDBs beside the input assemblies during weaving.
 
@@ -92,7 +100,7 @@ Build the local feed with `bash eng/pack.sh`. Add this reference to the applicat
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="DiagnosticsVisualizer.Build" Version="0.1.0-alpha.7" />
+  <PackageReference Include="DiagnosticsVisualizer.Build" Version="0.1.0-alpha.8" />
 </ItemGroup>
 <PropertyGroup>
   <DiagnosticsEnabled>true</DiagnosticsEnabled>

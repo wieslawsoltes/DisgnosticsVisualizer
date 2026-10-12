@@ -134,6 +134,8 @@ public sealed partial class WorkbenchView
         if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.KeyModifiers.HasFlag(KeyModifiers.Shift) && e.Key == Key.P)
         { ShowCommands(); e.Handled = true; return; }
         if (_overlay.IsVisible) return;
+        if (e.KeyModifiers == KeyModifiers.Alt && e.Key is Key.Left or Key.Right)
+        { e.Handled = e.Key == Key.Left ? _model.NavigateBack() : _model.NavigateForward(); return; }
         if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
             if (e.Key == Key.F && e.KeyModifiers.HasFlag(KeyModifiers.Shift)) { e.Handled = true; ToggleFocusMode(); }

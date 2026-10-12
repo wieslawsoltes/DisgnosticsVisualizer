@@ -124,6 +124,23 @@ static TraceView ReferenceInspection(TraceView view)
 
 static object VerifyInvestigation(TraceView trace)
 {
+    var routed = RoutedDispatches.Analyze(trace);
+    var propagation = routed.SingleOrDefault(r => r.Name == "DiagnosticsRouting") ?? throw new InvalidDataException("Real routed propagation was not recorded.");
+    if (propagation.Status != "Returned" || propagation.HandledAfter != false || propagation.ChangedHandled != 2 ||
+        !propagation.Steps.Any(s => s.Status == "Skipped: handled") ||
+        !routed.Any(r => r.Name == "DiagnosticsRoutingFailure" && r.Status == "Threw" && r.Steps.Any(s => s.Status == "Threw")))
+        throw new InvalidDataException("Routed handled/skip/failure evidence is incomplete.");
+    var routeEvents = trace.Events.ToDictionary(e => e.Id);
+    var handlerIds = propagation.Steps.Where(s => s.Event.Kind == TraceEventKind.Span).Select(s => s.EventId).ToHashSet();
+    var routedMutations = trace.Events.Count(e =>
+    {
+        if (e.Subsystem != Subsystem.PropertyNotifications) return false;
+        var seen = new HashSet<long>();
+        while (e.ParentId != 0 && seen.Add(e.Id) && routeEvents.TryGetValue(e.ParentId, out e))
+            if (handlerIds.Contains(e.Id)) return true;
+        return false;
+    });
+    if (routedMutations == 0) throw new InvalidDataException("Routed mutation lost its handler causal parent.");
     var origins = new XamlSourceIndex(trace).Origins;
     if (!origins.Any(o => o.Site.Document == "WorkloadWindow.axaml" && o.Site.Mapping == SourceMappingKind.XamlRoot) ||
         !origins.Any(o => o.Site.Document == "WorkloadWindow.axaml" && o.Type.Contains("Button", StringComparison.Ordinal) && o.Site.Mapping == SourceMappingKind.XamlConstruction))
@@ -147,7 +164,7 @@ static object VerifyInvestigation(TraceView trace)
         return false;
     });
     if (linked == 0) throw new InvalidDataException("Callback mutations have no captured dispatcher parent chain.");
-    return new { XamlOrigins = origins.Length, XamlObjects = origins.Select(o => o.ObjectId).Distinct().Count(),
+    return new { RoutedDispatches = routed.Length, RoutedSteps = routed.Sum(r => r.Steps.Length), RoutedCausalMutations = routedMutations, XamlOrigins = origins.Length, XamlObjects = origins.Select(o => o.ObjectId).Distinct().Count(),
         DispatcherOperations = rows.Length, Returned = rows.Count(r => r.Status == "Returned"), Faulted = rows.Count(r => r.Status == "Callback threw"),
         Aborted = rows.Count(r => r.Status == "Aborted before execution"), Priorities = rows.Sum(r => r.PriorityChanges.Length), CausalNotifications = linked };
 }

@@ -53,4 +53,15 @@
   <Style Selector=".dv-workbench DockControl">
     <Setter Property="Background" Value="#1F2124" />
   </Style>
+  <Style Selector=".dv-workbench DataGridRow:pointerover">
+    <Setter Property="Background" Value="#292E35" />
+  </Style>
+  <Style Selector=".dv-workbench DataGridRow:selected">
+    <Setter Property="Background" Value="#2E4365" />
+    <Setter Property="Foreground" Value="#FFFFFF" />
+  </Style>
+  <Style Selector=".dv-workbench TextBox">
+    <Setter Property="MinHeight" Value="28" />
+    <Setter Property="CornerRadius" Value="4" />
+  </Style>
 </Styles>

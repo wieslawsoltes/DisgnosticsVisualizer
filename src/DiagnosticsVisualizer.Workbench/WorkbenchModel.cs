@@ -174,6 +174,7 @@ public sealed partial class WorkbenchModel : INotifyPropertyChanged, IAsyncDispo
         _selectedObject = objectId;
         var selected = _events.GetValueOrDefault(_selectedEvent);
         if (selected.ObjectId != objectId) { _selectedEvent = 0; selected = default; }
+        RecordNavigation();
         SelectionChanged?.Invoke(selected.Id == 0 ? null : selected, objectId, false);
         if (requestTarget && Connected && objectId != 0) _ = RequestObjectAsync(objectId);
     }
@@ -182,6 +183,7 @@ public sealed partial class WorkbenchModel : INotifyPropertyChanged, IAsyncDispo
         if (!_events.TryGetValue(eventId, out var selected)) return;
         _selectedEvent = eventId;
         if (selected.ObjectId != 0) _selectedObject = selected.ObjectId;
+        RecordNavigation();
         SelectionChanged?.Invoke(selected, _selectedObject, focus);
         if (Connected && selected.ObjectId != 0) _ = RequestObjectAsync(selected.ObjectId);
     }
@@ -219,7 +221,7 @@ public sealed partial class WorkbenchModel : INotifyPropertyChanged, IAsyncDispo
         TraceUpdated?.Invoke(trace, analysis); ProfileUpdated?.Invoke();
         if (_selectedObject == 0) _selectedObject = trace.Snapshot.SelectedObject;
         SelectionChanged?.Invoke(_events.TryGetValue(_selectedEvent, out var selected) ? selected : null, _selectedObject, false);
-        Raise(nameof(Trace)); Raise(nameof(Analysis));
+        NavigationChanged(); Raise(nameof(Trace)); Raise(nameof(Analysis));
     }
     public void ReportError(string error) { Error = error; Status = "Attention required"; }
     public void ClearError() => Error = "";

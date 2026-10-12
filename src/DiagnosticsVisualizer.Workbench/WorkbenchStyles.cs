@@ -30,6 +30,11 @@ public static class WorkbenchStyles
         { Source = new Uri("avares://Dock.Avalonia.Themes.Fluent/Presets/Ide/RiderDark.axaml") });
         // Document tab templates have a specific foreground token independent of the generic Rider tab palette.
         control.Resources["DockDocumentTabSelectedForegroundBrush"] = Brushes.White;
+        // DataGrid templates consume these semantic tokens rather than the row's Background.
+        control.Resources["DataGridRowSelectedBackgroundBrush"] = new SolidColorBrush(Color.Parse("#2E4365"));
+        control.Resources["DataGridRowSelectedHoveredBackgroundBrush"] = new SolidColorBrush(Color.Parse("#3B5278"));
+        control.Resources["DataGridRowSelectedUnfocusedBackgroundBrush"] = new SolidColorBrush(Color.Parse("#303D51"));
+        control.Resources["DataGridRowSelectedHoveredUnfocusedBackgroundBrush"] = new SolidColorBrush(Color.Parse("#36455A"));
         if (control is TopLevel topLevel) topLevel.RequestedThemeVariant = ThemeVariant.Dark;
     }
     public static void Install(Application application)

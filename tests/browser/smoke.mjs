@@ -61,6 +61,12 @@ try {
   await command('Workspace: Investigate');
   await page.waitForFunction(() => { const h = globalThis.getDiagnosticsVisualizerHealth(); return h.activeDocuments.includes('dispatcher') && h.dispatcherOperations > 0; });
   await page.screenshot({ path: 'artifacts/browser/dispatcher-queue.png', fullPage: true });
+  await command('Show Routed events');
+  await page.waitForFunction(() => { const h = globalThis.getDiagnosticsVisualizerHealth(); return h.activeDocuments.includes('routed') && h.routedDispatches > 0; });
+  await page.screenshot({ path: 'artifacts/browser/routed-events.png', fullPage: true });
+  await command('Navigate back');
+  await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth().canNavigateForward);
+  await command('Navigate forward');
   await command('Show XAML origins');
   await page.waitForFunction(() => { const h = globalThis.getDiagnosticsVisualizerHealth(); return h.activeDocuments.includes('xaml') && h.xamlOrigins > 0; });
   await page.screenshot({ path: 'artifacts/browser/xaml-origins.png', fullPage: true });
@@ -117,7 +123,7 @@ try {
   await page.screenshot({ path: 'artifacts/browser/compact.png', fullPage: true });
   const finalHealth = await page.evaluate(() => globalThis.getDiagnosticsVisualizerHealth());
   assert.equal(finalHealth.error, '');
-  await writeFile('artifacts/browser/health.json', JSON.stringify({ initial: health, final: finalHealth, keyboardCommands: true, riderPreset: true, pointerRange: true, persistedWorkspace: true, sourceNavigation: true, dispatcherQueue: true, xamlOrigins: true }, null, 2));
+  await writeFile('artifacts/browser/health.json', JSON.stringify({ initial: health, final: finalHealth, keyboardCommands: true, riderPreset: true, pointerRange: true, persistedWorkspace: true, sourceNavigation: true, dispatcherQueue: true, xamlOrigins: true, routedEvents: true, selectionHistory: true }, null, 2));
   assert.deepEqual(errors, [], 'Browser errors or missing assets were detected.');
   console.log(JSON.stringify({ status: 'passed', ...finalHealth }));
 } catch (error) {

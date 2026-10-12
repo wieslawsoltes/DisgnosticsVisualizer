@@ -113,6 +113,7 @@ public sealed partial class WorkbenchView
             ("dependencies", "Object dependencies", "M1 6H5V10H1ZM11 1H15V5H11ZM11 11H15V15H11ZM5 8H8V3H11M8 8V13H11"),
             ("scene", "Layout scene", "M1 1H15V15H1ZM4 4H9V8H4ZM7 10H12V13H7Z"),
             ("history", "Snapshot history", "M2 7A6 6 0 1 1 3 12M2 2V7H7M8 4V8L11 10"),
+            ("routed", "Routed event propagation", "M2 2H6V6H2ZM10 10H14V14H10ZM6 4H12V10M2 12H7"),
             ("health", "Capture health", "M1 8H4L6 3L9 13L11 8H15") }) left.Children.Add(PanelButton(id, title, path));
         foreach (var (id, title, path) in new[] {
             ("properties", "Properties and resources", "M2 3H14M2 8H14M2 13H14M5 1V5M11 6V10M6 11V15"),
@@ -138,7 +139,7 @@ public sealed partial class WorkbenchView
     private Control RangeBar()
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Margin = new(12, 3) };
-        row.Children.Add(_rangeLabel);
+        row.Children.Add(NavigationButtons()); row.Children.Add(_rangeLabel);
         var clear = new Button { Content = "Clear range", FontSize = 10, Padding = new(8, 3) };
         clear.Click += async (_, _) => { await RunAsync(() => _model.SetRangeAsync(null)); _timeline.Fit(); _flame.Fit(); }; row.Children.Add(clear);
         var mark = new Button { Content = "Bookmark selection", FontSize = 10, Padding = new(8, 3) }; mark.Click += (_, _) => _model.AddBookmark(); row.Children.Add(mark);
