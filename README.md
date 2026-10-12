@@ -4,9 +4,15 @@ A cross-subsystem Avalonia trace recorder, inspector and Rider-style docking wor
 
 [Browser workbench](https://wieslawsoltes.github.io/DisgnosticsVisualizer/) · [Build/integration](https://github.com/wieslawsoltes/DisgnosticsVisualizer/actions/workflows/build.yml) · [Browser verification/deployment](https://github.com/wieslawsoltes/DisgnosticsVisualizer/actions/workflows/browser.yml)
 
-**0.1.0-alpha.9.** An actively validated implementation, not a claim of complete coverage of every Avalonia release or Chrome DevTools feature. The browser starts with a labelled synthetic example; it never pretends to be attached to an application. Check the deployment workflow for the current publication status.
+**0.1.0-alpha.10.** An actively validated implementation, not a claim of complete coverage of every Avalonia release or Chrome DevTools feature. The browser starts with a labelled synthetic example; it never pretends to be attached to an application. Check the deployment workflow for the current publication status.
 
-### New in alpha.9
+### New in alpha.10
+
+**Long-capture retention** now preserves exactly the latest accepted events rather than discarding entire batches. Oversized batches keep their retained tail, and retired sequence gaps remain counted. Very old replay cannot re-enter the store after the bounded sequence horizon advances.
+
+**Incremental publication** sorts only new retained arrivals, merges them with the cached chronological run, and bulk-copies an unchanged prefix. Public event arrays remain independently owned, while unchanged read-only metadata snapshots are reused. The existing one-argument `TraceStore` constructor remains available. A new checksum-validated benchmark records ingestion/publication latency and allocations for growing and steady-state 100,000-event workloads; it is not a target-instrumentation overhead claim. See [retention, publication and benchmarks](docs/retained-capture.md).
+
+### Previously in alpha.9
 
 **Resource lookups** now records actual provider calls, key/theme identities, nested delegation, bool/out results and exception exits. Found nulls are distinct from misses. Returned values and deferred factories are never evaluated again by diagnostics, and opaque keys are never formatted. Enable `AVTRACE_RESOURCE_LOOKUPS=1` on instrumented output.
 
@@ -108,7 +114,7 @@ Build the local feed with `bash eng/pack.sh`. Add this reference to the applicat
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="DiagnosticsVisualizer.Build" Version="0.1.0-alpha.9" />
+  <PackageReference Include="DiagnosticsVisualizer.Build" Version="0.1.0-alpha.10" />
 </ItemGroup>
 <PropertyGroup>
   <DiagnosticsEnabled>true</DiagnosticsEnabled>

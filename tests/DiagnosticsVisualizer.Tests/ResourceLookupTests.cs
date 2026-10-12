@@ -43,11 +43,10 @@ public sealed class ResourceLookupTests
     {
         using var session = Probe.Start(new() { TrackResourceLookups = true, EventsPerThread = 65536 }); var value = new object();
         void Call() { using var scope = Probe.BeginResourceLookup("hot", this, "K", "Dark"); scope.Returned(true, value); }
-        for (var i = 0; i < 256; i++) Call();
-        var start = GC.GetAllocatedBytesForCurrentThread(); for (var i = 0; i < 10000; i++) Call();
-        var bytes = GC.GetAllocatedBytesForCurrentThread() - start; Assert.Equal(0, bytes);
-        session.SetRecording(false); start = GC.GetAllocatedBytesForCurrentThread(); for (var i = 0; i < 10000; i++) Call();
-        bytes = GC.GetAllocatedBytesForCurrentThread() - start; Assert.Equal(0, bytes); Assert.Equal(0, session.DroppedEvents); Assert.Equal(0, session.ProbeFaults);
+        Action<int> body = count => { for (var i = 0; i < count; i++) Call(); };
+        var bytes = AllocationMeasurement.Measure(body); Assert.Equal(0, bytes);
+        session.SetRecording(false); bytes = AllocationMeasurement.Measure(body);
+        Assert.Equal(0, bytes); Assert.Equal(0, session.DroppedEvents); Assert.Equal(0, session.ProbeFaults);
     }
     [Fact] public void IncompleteAndConflictingObservationsRemainUnknown()
     {

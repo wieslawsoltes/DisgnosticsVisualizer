@@ -56,11 +56,8 @@ public sealed class CoreTests
     }
     [Fact] public void DisabledProbeDoesNotAllocate()
     {
-        for (var i = 0; i < 100; i++) { using var scope = Probe.Enter(0, "test", null); }
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 100_000; i++) { using var scope = Probe.Enter(0, "test", null); }
-        // Evaluate before entering xUnit generic assertion helpers (which may initialize lazily).
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        var allocated = AllocationMeasurement.Measure(static count =>
+        { for (var i = 0; i < count; i++) { using var scope = Probe.Enter(0, "test", null); } }, 100_000);
         Assert.Equal(0, allocated);
     }
     [Fact] public void NestedScopesHaveCausalParents()

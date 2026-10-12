@@ -30,6 +30,8 @@ jobs:
       - run: dotnet build DiagnosticsVisualizer.slnx -c Release
       - run: dotnet test tests/DiagnosticsVisualizer.Tests -c Release --no-build --logger "trx;LogFileName=tests.trx"
       - run: dotnet test tests/DiagnosticsVisualizer.UiTests -c Release --no-build --logger "trx;LogFileName=ui-tests.trx"
+      - name: Validate ingestion benchmark contents and record measurements
+        run: dotnet run --project tests/DiagnosticsVisualizer.Benchmarks -c Release --no-build -- artifacts/performance/ingestion-report.json
       - name: Pack and validate every reusable library
         run: bash eng/pack.sh
       - name: Execute instrumented Avalonia locally and through the collector
@@ -44,3 +46,4 @@ jobs:
             artifacts/packages/*
             artifacts/integration/*report.json
             artifacts/integration/*.log
+            artifacts/performance/*.json
