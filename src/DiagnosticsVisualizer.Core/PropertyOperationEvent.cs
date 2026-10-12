@@ -41,16 +41,18 @@ public static class PropertyOperationEvent
     public static PropertyValue Value(in TraceEvent e) => new((PropertyValueKind)((e.Data0 >> 13) & 15), e.Data1, e.ObjectId);
     public static bool IsEnd(in TraceEvent e) => IsEvent(e) && Phase(e) == 5;
     public static long OperationId(in TraceEvent e) => IsEnd(e) ? e.Id : e.ParentId;
+    public static bool ValidFlags(PropertyOperationKind kind, int flags) => (flags & ~31) == 0 &&
+        (kind == PropertyOperationKind.Notify ? (flags & 24) is 8 or 16 : (flags & 24) == 0);
     public static bool IsValid(in TraceEvent e)
     {
         var kind = Operation(e); var phase = Phase(e); var flags = Flags(e);
         if (!IsEvent(e) || kind is < PropertyOperationKind.Set or > PropertyOperationKind.ValueEntry || e.Id <= 0 || e.ObjectId < 0 || e.RelatedId < 0 || e.ParentId < 0) return false;
-        if (phase == 5) return e.Kind == TraceEventKind.Span && e.Duration >= 0 && e.Data1 >= 0 && e.Data0 == Code(kind, 5, flags, outcome: Outcome(e)) &&
+        if (phase == 5) return ValidFlags(kind, flags) && e.Kind == TraceEventKind.Span && e.Duration >= 0 && e.Data1 >= 0 && e.Data0 == Code(kind, 5, flags, outcome: Outcome(e)) &&
             (Outcome(e) is not (PropertyOperationOutcome.Changed or PropertyOperationOutcome.Unchanged) || kind == PropertyOperationKind.DirectSetAndRaise);
         if (e.Kind != TraceEventKind.Link || e.ParentId <= 0 || e.Duration != 0) return false;
         return phase switch
         {
-            1 => e.Data1 >= 0 && e.Data0 == Code(kind, 1, flags) && (kind == PropertyOperationKind.Notify ? (flags & 24) is 8 or 16 : (flags & 24) == 0),
+            1 => e.Data1 >= 0 && e.Data0 == Code(kind, 1, flags) && ValidFlags(kind, flags),
             2 => e.Data0 == Code(kind, 2) && e.RelatedId == 0 && (e.Data1 == UnknownPriority || e.Data1 is >= int.MinValue and <= int.MaxValue),
             3 or 4 => e.Data0 == Code(kind, phase, value: Value(e).Kind) && e.RelatedId == 0 && Value(e).IsValid,
             _ => false
