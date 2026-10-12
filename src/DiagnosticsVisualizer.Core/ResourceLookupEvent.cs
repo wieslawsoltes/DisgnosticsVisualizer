@@ -16,8 +16,9 @@ public static class ResourceLookupEvent
     public static bool IsCompletion(in TraceEvent e) => IsEvent(e) && (e.Data0 & 0xff) == 3;
     public static ResourceLookupOutcome Outcome(in TraceEvent e) => (ResourceLookupOutcome)((e.Data0 >> 8) & 0xff);
     public static long LookupId(in TraceEvent e) => IsCompletion(e) ? e.Id : e.ParentId;
-    public static bool IsValid(in TraceEvent e) => e.Id > 0 && e.Data1 >= 0 && (IsRequest(e) || IsTheme(e)
+    public static bool IsValid(in TraceEvent e) => e.Id > 0 && e.ObjectId >= 0 && e.RelatedId >= 0 && e.Data1 >= 0 && (IsRequest(e) || IsTheme(e)
         ? e.Kind == TraceEventKind.Link && e.ParentId > 0 && e.Duration == 0
         : IsCompletion(e) && e.Kind == TraceEventKind.Span && e.Duration >= 0 &&
-          e.Data0 == CompleteCode(Outcome(e)) && (uint)Outcome(e) <= (uint)ResourceLookupOutcome.FoundNull);
+          e.Data0 == CompleteCode(Outcome(e)) && (uint)Outcome(e) <= (uint)ResourceLookupOutcome.FoundNull &&
+          (Outcome(e) == ResourceLookupOutcome.Found || e.RelatedId == 0));
 }
