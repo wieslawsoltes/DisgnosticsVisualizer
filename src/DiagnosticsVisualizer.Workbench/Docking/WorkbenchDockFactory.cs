@@ -27,13 +27,13 @@ public sealed class WorkbenchDockFactory(IReadOnlyDictionary<string, Control> vi
         {
             var title = id switch
             {
-                "dispatcher" => "Dispatcher queue", "xaml" => "XAML origins", "dependencies" => "Dependencies", "async" => "Async operations", "sources" => "Sources", "timeline" => "Timeline", "flame" => "Flame chart", "causality" => "Causal chain", "systems" => "Subsystems",
+                "routed" => "Routed events", "dispatcher" => "Dispatcher queue", "xaml" => "XAML origins", "dependencies" => "Dependencies", "async" => "Async operations", "sources" => "Sources", "timeline" => "Timeline", "flame" => "Flame chart", "causality" => "Causal chain", "systems" => "Subsystems",
                 "comparison" => "Compare", "visual" => "Visual tree", "logical" => "Logical tree", "properties" => "Properties & resources",
                 "details" => "Event details", "events" => "Event log", "findings" => "Findings", "costs" => "Hot paths",
                 "topdown" => "Call tree", "bottomup" => "Bottom-up", "statistics" => "Statistics", "threads" => "Thread activity",
                 "scene" => "Layout scene", "history" => "Snapshot history", "bookmarks" => "Bookmarks", "health" => "Capture health", _ => id
             };
-            IDockable panel = id is "dispatcher" or "xaml" or "dependencies" or "async" or "sources" or "timeline" or "flame" or "causality" or "systems" or "comparison" or "topdown" or "bottomup" or "statistics" or "scene" or "history"
+            IDockable panel = id is "routed" or "dispatcher" or "xaml" or "dependencies" or "async" or "sources" or "timeline" or "flame" or "causality" or "systems" or "comparison" or "topdown" or "bottomup" or "statistics" or "scene" or "history"
                 ? new PanelDocument { Id = id, Title = title, View = view, CanClose = false, CanFloat = true }
                 : new PanelTool { Id = id, Title = title, View = view, CanClose = false, CanFloat = true, CanPin = true };
             _panels[id] = panel;
@@ -48,7 +48,7 @@ public sealed class WorkbenchDockFactory(IReadOnlyDictionary<string, Control> vi
             {
                 WorkspacePreset.Profile => Panels("flame", "topdown", "bottomup", "statistics", "async"),
                 WorkspacePreset.Compare => Panels("comparison", "timeline"),
-                WorkspacePreset.Investigate => Panels("dispatcher", "xaml", "dependencies", "sources"),
+                WorkspacePreset.Investigate => Panels("dispatcher", "routed", "xaml", "dependencies", "sources"),
                 _ => Panels("timeline", "scene", "causality")
             } };
         var bottom = new ToolDock { Id = "bottom", Alignment = Alignment.Bottom, Proportion = .27,

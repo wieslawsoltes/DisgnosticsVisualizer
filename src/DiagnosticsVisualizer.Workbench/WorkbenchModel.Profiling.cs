@@ -51,6 +51,7 @@ public sealed partial class WorkbenchModel
     { _bookmarks.RemoveAll(b => b.EventId == eventId); BookmarksUpdated?.Invoke(); }
     private void ResetReview()
     {
+        ResetNavigation();
         ++_rangeGeneration; Range = null; Profile = FullProfile = null; _profileIndex = null;
         _selectedEvent = _selectedObject = 0; Comparison = []; _bookmarks.Clear();
         BookmarksUpdated?.Invoke(); ComparisonUpdated?.Invoke();
