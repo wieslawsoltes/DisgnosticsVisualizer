@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-version="${1:-0.1.0-alpha.10}"
+version="${1:-0.1.0-alpha.11}"
 root="$PWD"
 mkdir -p artifacts/integration
 sample=tests/DiagnosticsVisualizer.Sample
 # Startup deep profiling deliberately exercises large synchronous bursts.
 export AVTRACE_SNAPSHOT_INTERVAL_MS=250
-export AVTRACE_EVENTS_PER_THREAD=65536
+export AVTRACE_EVENTS_PER_THREAD=131072
 export AVTRACE_MAX_THREADS=16
 export AVTRACE_SAMPLE_EVERY=1
 export AVTRACE_ROUTED_EVENTS=1
 export AVTRACE_RESOURCE_LOOKUPS=1
+export AVTRACE_STYLE_EVALUATIONS=1
 export AVTRACE_XAML_OBJECTS=1
 export AVTRACE_DISPATCHER_OPERATIONS=1
 export AVTRACE_ASYNC_OPERATIONS=1
@@ -31,6 +32,7 @@ grep -q 'ASYNC_WORKLOAD_OK notifications=1' artifacts/integration/workload.log
 grep -q 'RESOURCE_WORKLOAD_OK deferred=0' artifacts/integration/workload.log
 grep -q 'DISPATCHER_WORKLOAD_OK completed=2 aborted=0 fault=observed' artifacts/integration/workload.log
 grep -q 'RESOURCE_LOOKUP_WORKLOAD_OK merged=higher theme=dark lazy=1 null=found missing=false opaque=safe fault=preserved' artifacts/integration/workload.log
+grep -q 'STYLE_WORKLOAD_OK active=0.25 local=0.8 cleared=0.25 inactive=1' artifacts/integration/workload.log
 verifier=tests/DiagnosticsVisualizer.CaptureVerifier/bin/Release/net10.0/DiagnosticsVisualizer.CaptureVerifier.dll
 dotnet "$verifier" artifacts/integration/sample.avtrace artifacts/integration/capture-report.json
 collector=src/DiagnosticsVisualizer.Collector/bin/Release/net10.0/DiagnosticsVisualizer.Collector.dll

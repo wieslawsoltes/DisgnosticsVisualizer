@@ -100,6 +100,25 @@ public sealed partial class WorkloadWindow : Window
         await animation.RunAsync(button);
         await ExerciseAsync();
         await ExerciseDispatcherAsync();
+        ExerciseStyling();
+    }
+    private void ExerciseStyling()
+    {
+        var target = new Border { Name = "StyleProbe" };
+        var style = new Style(s => s.OfType<Border>().Class("diagnostics-active"));
+        style.Setters.Add(new Setter(Visual.OpacityProperty, .25d));
+        Styles.Add(style); this.FindControl<WorkloadPanel>("Panel")!.Children.Add(target);
+        if (target.Opacity != 1d) throw new InvalidOperationException("Inactive style changed.");
+        target.Classes.Add("diagnostics-active");
+        if (target.Opacity != .25d) throw new InvalidOperationException("Style activation changed.");
+        target.Opacity = .8d;
+        target.Classes.Remove("diagnostics-active"); target.Classes.Add("diagnostics-active");
+        if (target.Opacity != .8d) throw new InvalidOperationException("Style overwrote a local value.");
+        target.ClearValue(Visual.OpacityProperty);
+        if (target.Opacity != .25d) throw new InvalidOperationException("Style failed after local clear.");
+        target.Classes.Remove("diagnostics-active");
+        if (target.Opacity != 1d) throw new InvalidOperationException("Style deactivation changed.");
+        Console.WriteLine("STYLE_WORKLOAD_OK active=0.25 local=0.8 cleared=0.25 inactive=1");
     }
     private async Task ExerciseDispatcherAsync()
     {
