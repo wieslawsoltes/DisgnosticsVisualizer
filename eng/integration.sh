@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-version="${1:-0.1.0-alpha.11}"
+version="${1:-0.1.0-alpha.12}"
 root="$PWD"
 mkdir -p artifacts/integration
 sample=tests/DiagnosticsVisualizer.Sample

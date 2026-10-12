@@ -36,6 +36,23 @@ jobs:
         run: bash eng/pack.sh
       - name: Execute instrumented Avalonia locally and through the collector
         run: bash eng/integration.sh
+      - name: Summarize executed tests and matched adapter counts
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import collections, json, pathlib, xml.etree.ElementTree as ET
+          summary = {'tests': {}, 'adapters': {}}
+          for path in pathlib.Path('tests').glob('*/TestResults/*.trx'):
+              counters = ET.parse(path).find('.//{*}Counters')
+              if counters is not None: summary['tests'][str(path)] = counters.attrib
+          manifest = pathlib.Path('artifacts/integration/weaving-report.json')
+          if manifest.exists():
+              data = json.loads(manifest.read_text())
+              summary['adapters'] = dict(collections.Counter(m['Status'] for a in data['Assemblies'] for m in a['Methods']))
+          pathlib.Path('artifacts').mkdir(exist_ok=True)
+          pathlib.Path('artifacts/validation-summary.json').write_text(json.dumps(summary, indent=2))
+          print('DIAGNOSTICS_VALIDATION_SUMMARY ' + json.dumps(summary))
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -47,3 +64,10 @@ jobs:
             artifacts/integration/*report.json
             artifacts/integration/*.log
             artifacts/performance/*.json
+            artifacts/validation-summary.json
+      - name: Retain actual instrumented sample recording
+        uses: actions/upload-artifact@v4
+        with:
+          name: recorded-binding-example
+          path: artifacts/integration/sample.avtrace
+          retention-days: 14

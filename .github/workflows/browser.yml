@@ -40,6 +40,7 @@ jobs:
         run: |
           python3 -m http.server 8080 --directory artifacts/site > artifacts/browser/server.log 2>&1 &
           node tests/browser/smoke.mjs
+          node tests/browser/bindings.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
