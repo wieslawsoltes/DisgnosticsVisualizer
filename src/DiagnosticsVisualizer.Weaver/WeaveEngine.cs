@@ -54,6 +54,8 @@ public static class WeaveEngine
                 }
                 var module = assembly.MainModule; var originalMvid = module.Mvid.ToString();
                 var signed = assembly.Name.HasPublicKey; var methodReports = new List<MethodReport>();
+                var propertyReports = PropertyOperationRewriter.Instrument(module); methodReports.AddRange(propertyReports);
+                var propertyTokens = propertyReports.Where(r => r.Status == "PropertyOperation").Select(r => r.Token).ToHashSet();
                 var bindingReports = BindingOperationRewriter.Instrument(module); methodReports.AddRange(bindingReports);
                 var bindingTokens = bindingReports.Where(r => r.Status == "BindingOperation").Select(r => r.Token).ToHashSet();
                 var styleReports = StyleEvaluationRewriter.Instrument(module); methodReports.AddRange(styleReports);
@@ -68,7 +70,7 @@ public static class WeaveEngine
                 foreach (var type in AllTypes(module.Types))
                 foreach (var method in type.Methods.ToArray())
                 {
-                    if (!method.HasBody || bindingTokens.Contains(method.MetadataToken.ToInt32()) || resourceTokens.Contains(method.MetadataToken.ToInt32()) || styleTokens.Contains(method.MetadataToken.ToInt32())) continue;
+                    if (!method.HasBody || method.Name.StartsWith("__AvTrace", StringComparison.Ordinal) || propertyTokens.Contains(method.MetadataToken.ToInt32()) || bindingTokens.Contains(method.MetadataToken.ToInt32()) || resourceTokens.Contains(method.MetadataToken.ToInt32()) || styleTokens.Contains(method.MetadataToken.ToInt32())) continue;
                     var category = HookCatalog.Match(method, options.Deep); var notifications = MethodRewriter.InstrumentNotifications(module, method);
                     if (category is null && notifications > 0) category = Subsystem.Application; if (category is null) continue;
                     var sourceSite = SourceSiteBuilder.Create(module, method); var reason = MethodRewriter.Unsupported(method);

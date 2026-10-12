@@ -57,20 +57,21 @@ public sealed class WorkbenchDockFactory(IReadOnlyDictionary<string, Control> vi
             VisibleDockables = Panels("visual", "logical"), IsCollapsable = false };
         var right = new ToolDock { Id = "right", Alignment = Alignment.Right, Proportion = .23,
             VisibleDockables = Panels("properties", "details", "bookmarks", "health"), IsCollapsable = false };
-        var documents = new DocumentDock { Id = "documents", IsCollapsable = false, Proportion = preset is WorkspacePreset.Resources or WorkspacePreset.Styling ? .84 : .73, CanCreateDocument = false,
+        var documents = new DocumentDock { Id = "documents", IsCollapsable = false, Proportion = preset is WorkspacePreset.Resources or WorkspacePreset.Styling or WorkspacePreset.Properties ? .84 : .73, CanCreateDocument = false,
             VisibleDockables = preset switch
             {
                 WorkspacePreset.Profile => Panels("flame", "topdown", "bottomup", "statistics", "async"),
                 WorkspacePreset.Compare => Panels("comparison", "timeline"),
+                WorkspacePreset.Properties => Panels("property-history", "bindings", "styling", "resources", "sources"),
                 WorkspacePreset.Styling => Panels("styling", "bindings", "resources", "dependencies", "sources"),
                 WorkspacePreset.Resources => Panels("resources", "bindings", "dependencies", "sources", "xaml"),
                 WorkspacePreset.Investigate => Panels("dispatcher", "routed", "bindings", "xaml", "dependencies", "sources"),
                 _ => Panels("timeline", "scene", "causality")
             } };
-        var bottom = new ToolDock { Id = "bottom", Alignment = Alignment.Bottom, Proportion = preset is WorkspacePreset.Resources or WorkspacePreset.Styling ? .16 : .27,
+        var bottom = new ToolDock { Id = "bottom", Alignment = Alignment.Bottom, Proportion = preset is WorkspacePreset.Resources or WorkspacePreset.Styling or WorkspacePreset.Properties ? .16 : .27,
             VisibleDockables = Panels("events", "findings", "costs", "threads"), IsCollapsable = false };
         left.ActiveDockable = _panels.GetValueOrDefault("visual"); right.ActiveDockable = _panels.GetValueOrDefault(preset == WorkspacePreset.Profile ? "details" : "properties");
-        documents.ActiveDockable = _panels.GetValueOrDefault(preset switch { WorkspacePreset.Profile => "flame", WorkspacePreset.Compare => "comparison", WorkspacePreset.Styling => "styling", WorkspacePreset.Resources => "resources", WorkspacePreset.Investigate => "dispatcher", _ => "timeline" });
+        documents.ActiveDockable = _panels.GetValueOrDefault(preset switch { WorkspacePreset.Profile => "flame", WorkspacePreset.Compare => "comparison", WorkspacePreset.Properties => "property-history", WorkspacePreset.Styling => "styling", WorkspacePreset.Resources => "resources", WorkspacePreset.Investigate => "dispatcher", _ => "timeline" });
         bottom.ActiveDockable = _panels.GetValueOrDefault(preset == WorkspacePreset.Profile ? "costs" : "findings");
         var center = new ProportionalDock { Id = "center", Orientation = Dock.Model.Core.Orientation.Vertical, Proportion = preset == WorkspacePreset.Inspect ? .59 : .63,
             VisibleDockables = CreateList<IDockable>(documents, new ProportionalDockSplitter(), bottom) };
