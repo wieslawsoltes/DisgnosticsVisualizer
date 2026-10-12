@@ -22,7 +22,7 @@ public sealed class RoutedRouteChart : Control
     public void SetDispatch(RoutedDispatch? dispatch, RoutedStep[] steps, TraceView? trace)
     {
         _steps = dispatch?.Status == "Conflicting / invalid" ? [] : steps.Take(Limit).ToArray();
-        _labels = _steps.Select(s => ChartPalette.Text($"{s.Phase} · #{s.ObjectId} · {s.Kind} · {s.HandledBefore} → {s.HandledAfter}", 10)).ToArray();
+        _labels = _steps.Select(s => ChartPalette.Text($"{s.Phase} · #{s.ObjectId} · {s.Kind} · {s.HandledBefore} -> {s.HandledAfter}", 10)).ToArray();
         _start = dispatch?.Start ?? 0;
         _duration = Math.Max(1, (dispatch?.Completion?.End ?? _steps.Select(s => s.Event.End).DefaultIfEmpty(_start).Max()) - _start);
         _caption = ChartPalette.Text(dispatch is null ? "Select a routed dispatch" :
