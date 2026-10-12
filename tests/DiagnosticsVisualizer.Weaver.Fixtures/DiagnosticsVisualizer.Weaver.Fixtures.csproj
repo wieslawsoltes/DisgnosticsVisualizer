@@ -1,1 +1,1 @@
-<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><IsPackable>false</IsPackable></PropertyGroup><ItemGroup><ProjectReference Include="../../src/DiagnosticsVisualizer.Runtime/DiagnosticsVisualizer.Runtime.csproj" /></ItemGroup></Project>
+<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><IsPackable>false</IsPackable></PropertyGroup><ItemGroup><ProjectReference Include="../../src/DiagnosticsVisualizer.Runtime/DiagnosticsVisualizer.Runtime.csproj" /></ItemGroup><ItemGroup><PackageReference Include="Avalonia" Version="$(AvaloniaVersion)" /></ItemGroup></Project>

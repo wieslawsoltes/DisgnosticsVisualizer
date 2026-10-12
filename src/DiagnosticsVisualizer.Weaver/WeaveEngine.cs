@@ -59,6 +59,7 @@ public static class WeaveEngine
                 }
                 var module = assembly.MainModule; var originalMvid = module.Mvid.ToString();
                 var signed = assembly.Name.HasPublicKey; var methodReports = new List<MethodReport>();
+                methodReports.AddRange(RoutedEventRewriter.Instrument(module));
                 if (options.Deep)
                     foreach (var method in AllTypes(module.Types).SelectMany(t => t.Methods).ToArray())
                         methodReports.AddRange(XamlSourceRewriter.Instrument(module, method));

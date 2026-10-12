@@ -7,6 +7,7 @@ namespace DiagnosticsVisualizer.Runtime;
 
 public sealed class CaptureSession : IDisposable
 {
+    internal readonly ConditionalWeakTable<Delegate, RoutedHandlerName> RoutedHandlers = new();
     internal readonly ConditionalWeakTable<object, DispatcherCapture> Dispatchers = new();
     private sealed record Identity(long Id);
     private readonly ConditionalWeakTable<object, Identity> _identities = new();
