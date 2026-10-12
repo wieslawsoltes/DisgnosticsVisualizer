@@ -64,6 +64,8 @@ public static partial class Program
             theme = view?.ThemeName, dockSurface = (surface as ISolidColorBrush)?.Color.ToString(),
             overview = new { x = overviewPosition.X, y = overviewPosition.Y, width = overview?.Bounds.Width ?? 0, height = overview?.Bounds.Height ?? 0 },
             statisticsVisible = visuals.OfType<DataGrid>().Any(grid => grid.Name == "StatisticsGrid" && grid.IsEffectivelyVisible),
+            routedDispatches = visuals.OfType<RoutedEventsControl>().FirstOrDefault()?.DispatchCount ?? 0,
+            canNavigateBack = model?.CanNavigateBack == true, canNavigateForward = model?.CanNavigateForward == true,
             dispatcherOperations = visuals.OfType<DispatcherOperationsControl>().FirstOrDefault()?.OperationCount ?? 0,
             xamlOrigins = visuals.OfType<XamlOriginsControl>().FirstOrDefault()?.OriginCount ?? 0,
             sceneVisible = visuals.OfType<LayoutSceneControl>().Any(scene => scene.IsEffectivelyVisible),

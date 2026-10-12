@@ -86,6 +86,7 @@ public sealed partial class WorkloadWindow : Window
         if (clicks != 24 || panel.DirectValue != 23 || _model.Items.Count != 4)
             throw new InvalidOperationException("Instrumentation changed application behavior.");
         Console.WriteLine("WORKLOAD_OK clicks=24 direct=23 items=4");
+        ExerciseRouting(button);
         var animation = new Animation
         {
             Duration = TimeSpan.FromMilliseconds(80),
