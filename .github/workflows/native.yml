@@ -1,0 +1,34 @@
+name: Native runtime profiler
+on:
+  pull_request:
+    paths: ['native/**', 'src/DiagnosticsVisualizer.Attach/**', 'tests/DiagnosticsVisualizer.NativeTests/**', '.github/workflows/native.yml']
+  push:
+    branches: [main]
+    paths: ['native/**', 'src/DiagnosticsVisualizer.Attach/**', 'tests/DiagnosticsVisualizer.NativeTests/**', '.github/workflows/native.yml']
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Obtain pinned public runtime SDK headers
+        uses: actions/checkout@v4
+        with:
+          repository: dotnet/runtime
+          ref: 60629d14374c56f1cb51819049ad1fa529307f8d
+          path: artifacts/runtime-sdk
+          sparse-checkout: |
+            src/coreclr/inc
+            src/coreclr/pal/inc
+            src/coreclr/pal/prebuilt/inc
+            src/tests/profiler/native
+      - name: Retain exact public SDK for offline native validation
+        run: |
+          mkdir -p artifacts/native
+          git -C artifacts/runtime-sdk archive --format=tar.gz HEAD -- LICENSE.TXT src/coreclr/inc src/coreclr/pal/inc src/coreclr/pal/prebuilt/inc src/tests/profiler/native > artifacts/native/runtime-sdk.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pinned-native-runtime-sdk
+          path: artifacts/native/runtime-sdk.tar.gz
+          retention-days: 3
