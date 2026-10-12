@@ -22,14 +22,14 @@ async function command(text) {
 }
 try {
   await page.goto(process.env.VIEWER_URL ?? 'http://127.0.0.1:8080/', { waitUntil: 'domcontentloaded' }); await ready();
-  await page.mouse.click(650, 220);
+  await page.mouse.click(650, 65);
   await command('Show Binding operations');
-  await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth().activeDocuments.includes('bindings'));
-  await page.screenshot({ path: 'artifacts/browser/bindings-empty-state.png', fullPage: true });
-  // The original synthetic overview has no binding lifecycle events. Assert navigation and
-  // persisted document ownership here; populated call semantics are exercised by headless UI
-  // fixtures and by the packaged local/remote application, not manufactured as a live connection.
+  await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth().activeDocuments.includes('bindings') && globalThis.getDiagnosticsVisualizerHealth().bindingOperations === 12);
+  await page.screenshot({ path: 'artifacts/browser/bindings-invocations.png', fullPage: true });
+  // Explicitly synthetic populated lifecycle data; packaged integration separately
+  // exercises actual rewritten applications and preserves their runtime behavior.
   await command('Show Binding expression history');
+  await page.waitForFunction(() => globalThis.getDiagnosticsVisualizerHealth().bindingHistoryVisible);
   await command('Save workspace layout');
   await page.waitForFunction(() => (localStorage.getItem('diagnostics.workspace.v1') ?? '').includes('bindings'));
   await page.reload({ waitUntil: 'domcontentloaded' }); await ready();
@@ -39,9 +39,10 @@ try {
   await page.waitForTimeout(250);
   await page.screenshot({ path: 'artifacts/browser/bindings-restored-compact.png', fullPage: true });
   const final = await health(); assert.equal(final.error, ''); assert.deepEqual(errors, []);
-  await writeFile('artifacts/browser/bindings-health.json', JSON.stringify({ final, document: true, expressionHistoryCommand: true, persisted: true, originalDemoWithoutLifecycleEvents: true }, null, 2));
+  await writeFile('artifacts/browser/bindings-health.json', JSON.stringify({ final, document: true, expressionHistoryCommand: true, persisted: true, syntheticLifecycleExamples: true }, null, 2));
   console.log('BINDINGS_BROWSER_OK document=activated history=activated layout=restored errors=0');
 } catch (error) {
   await page.screenshot({ path: 'artifacts/browser/bindings-failure.png', fullPage: true }).catch(() => {});
+  await writeFile('artifacts/browser/bindings-failure-health.json', JSON.stringify(await health().catch(() => null), null, 2));
   await writeFile('artifacts/browser/bindings-failure.txt', String(error.stack ?? error)); throw error;
 } finally { await writeFile('artifacts/browser/bindings-errors.json', JSON.stringify(errors)); await browser.close(); }

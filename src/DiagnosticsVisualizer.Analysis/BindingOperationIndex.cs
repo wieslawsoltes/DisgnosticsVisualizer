@@ -38,6 +38,7 @@ public sealed class BindingOperationIndex
     private readonly Dictionary<long, BindingOperation> _byId;
     private readonly Dictionary<long, BindingOperation[]> _children;
     private readonly Dictionary<long, BindingOperation[]> _expressions;
+    private readonly Dictionary<long, BindingOperation[]> _attachments;
     public BindingOperation[] Calls { get; }
     public BindingOperation[] Roots { get; }
     public int InvalidMarkers { get; }
@@ -71,6 +72,8 @@ public sealed class BindingOperationIndex
                     BindingOperationEvent.Phase(phase) != 3 && phase.Data1 != parent) p.Invalid = true;
             }
             if (begin is { } b && end is { } e && (b.ObjectId != e.ObjectId || e.Duration > 0 && e.End <= e.Timestamp)) p.Invalid = true;
+            if (begin is { } inputFacts && input is { ObjectId: > 0 } &&
+                BindingOperationEvent.ValueKind(inputFacts.Data0) != BindingValueKind.Value) p.Invalid = true;
             var complete = p.Phases.All(e => e is not null);
             rows.Add(new(id, kind, trace.Name(first), begin, context, input, end, parent, p.Invalid, loss || !complete,
                 complete && !p.Invalid && end is { } completed ? trace.Milliseconds(completed.Duration) : null));
@@ -102,6 +105,10 @@ public sealed class BindingOperationIndex
         Roots = Calls.Where(r => r.ParentOperationId == 0 || !_byId.ContainsKey(r.ParentOperationId)).ToArray();
         _children = Calls.Where(r => r.ParentOperationId != 0).GroupBy(r => r.ParentOperationId).ToDictionary(g => g.Key, g => g.ToArray());
         _expressions = Calls.Where(r => r.ExpressionId != 0).GroupBy(r => r.ExpressionId).ToDictionary(g => g.Key, g => g.ToArray());
+        _attachments = Calls.Where(r => r.ExpressionId != 0 && r.TargetId > 0 && r.Kind == BindingOperationKind.Attach &&
+                r.IsComplete && r.Outcome == BindingOperationOutcome.Returned)
+            .GroupBy(r => r.ExpressionId).ToDictionary(g => g.Key,
+                g => g.OrderBy(r => r.End!.Value.End).ThenBy(r => r.Id).ToArray());
         InvalidMarkers = malformed + Calls.Count(r => r.Invalid);
     }
     public BindingOperation? Find(long id) => _byId.GetValueOrDefault(id);
@@ -124,14 +131,17 @@ public sealed class BindingOperationIndex
     public long RecordedAttachmentTarget(BindingOperation operation)
     {
         if (operation.TargetId > 0) return operation.TargetId;
-        if (!_expressions.TryGetValue(operation.ExpressionId, out var history)) return 0;
-        // A historical successful attachment is labelled as such by the UI; it is not a current subscription claim.
-        for (var i = history.Length - 1; i >= 0; i--)
+        if (!_attachments.TryGetValue(operation.ExpressionId, out var history)) return 0;
+        // Upper bound by completion, not entry: reentrant attachments can complete in a
+        // different order. This is a historical observation, never a live ownership claim.
+        var low = 0; var high = history.Length;
+        while (low < high)
         {
-            var row = history[i];
-            if (row.Kind == BindingOperationKind.Attach && row.IsComplete && row.Outcome == BindingOperationOutcome.Returned && row.End!.Value.End <= operation.Timestamp) return row.TargetId;
+            var middle = low + (high - low) / 2;
+            if (history[middle].End!.Value.End <= operation.Timestamp) low = middle + 1;
+            else high = middle;
         }
-        return 0;
+        return low == 0 ? 0 : history[low - 1].TargetId;
     }
     private static void ValidateLimit(int limit) { if (limit is < 1 or > 65536) throw new ArgumentOutOfRangeException(nameof(limit)); }
 }

@@ -48,6 +48,7 @@ public static class BindingOperationEvent
             kind is < BindingOperationKind.Attach or > BindingOperationKind.ValidationError || !ValidFacts(facts)) return false;
         if (IsEnd(e)) return e.Kind == TraceEventKind.Span && e.Duration >= 0 &&
             e.Data0 == EndCode(kind, Outcome(e), facts) &&
+            (ValueKind(facts) == BindingValueKind.Value || e.RelatedId == 0) &&
             (Outcome(e) is not (BindingOperationOutcome.True or BindingOperationOutcome.False) || kind == BindingOperationKind.WriteSource) && (Outcome(e) != BindingOperationOutcome.Threw || facts == 0 && e.RelatedId == 0);
         return e.Kind == TraceEventKind.Link && e.ParentId > 0 && e.Duration == 0 && (Phase(e) switch
         {

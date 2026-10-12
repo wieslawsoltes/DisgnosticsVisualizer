@@ -3,7 +3,7 @@ using DiagnosticsVisualizer.Core;
 namespace DiagnosticsVisualizer.Analysis;
 
 /// <summary>Deterministic, explicitly synthetic example. Never presented as a recording of the viewer itself.</summary>
-public static class DemoTraceFactory
+public static partial class DemoTraceFactory
 {
     public static IReadOnlyList<TraceBlock> Create(int frames = 180)
     {
@@ -170,6 +170,7 @@ public static class DemoTraceFactory
                 i % 2 == 0 ? StyleEvaluationOutcome.Inactive : StyleEvaluationOutcome.Active, 114, i > 0);
         }
         objects = [..objects, new(113, "SyntheticSelector", "Demonstration selector"), new(114, "SyntheticActivator", "Demonstration activator"), new(115, "SyntheticStyleFrame", "Demonstration frame")];
+        AddBindingExample(events, ref id, ref symbols, ref objects);
         var blocks = new List<TraceBlock>(); var chunks = events.Chunk(2048).ToArray();
         for (var i = 0; i < chunks.Length; i++) blocks.Add(new()
         {
