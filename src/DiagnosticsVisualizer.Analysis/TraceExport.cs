@@ -86,6 +86,7 @@ public static class TraceExport
             writer.WriteString("name", $"Managed thread {thread}"); writer.WriteEndObject(); writer.WriteEndObject();
         }
         var resourceLookups = new ResourceLookupIndex(trace);
+        var styles = new StyleEvaluationIndex(trace);
         var count = 0;
         foreach (var e in trace.Events)
         {
@@ -116,6 +117,15 @@ public static class TraceExport
                 writer.WriteString("resourceKey", lookup.Key); writer.WriteString("resourceTheme", lookup.Theme);
                 writer.WriteString("resourceOutcome", lookup.Status); writer.WriteString("resourceProvider", lookup.Provider);
                 writer.WriteString("resourceResultIdentity", lookup.ValueId.ToString()); writer.WriteBoolean("resourceCaptureIncomplete", lookup.CaptureIncomplete);
+            }
+            if (StyleEvaluationEvent.IsValid(e) && styles.Find(StyleEvaluationEvent.EvaluationId(e)) is { } style)
+            {
+                writer.WriteString("styleEvaluationId", style.Id.ToString()); writer.WriteString("styleParentEvaluationId", style.ParentEvaluationId.ToString());
+                writer.WriteString("styleOperation", style.Kind.ToString()); writer.WriteString("styleOutcome", style.Status);
+                writer.WriteString("styleTargetId", style.TargetId.ToString()); writer.WriteString("styleContextId", style.ContextId.ToString());
+                writer.WriteString("styleActivatorId", style.ActivatorId.ToString()); writer.WriteString("styleInput", style.InputDescription);
+                if (style.Changed is { } changed) writer.WriteBoolean("styleActivityChanged", changed);
+                writer.WriteBoolean("styleCaptureIncomplete", style.CaptureIncomplete);
             }
             if (trace.SourceSites.TryGetValue(e.NameId, out var site))
             {
