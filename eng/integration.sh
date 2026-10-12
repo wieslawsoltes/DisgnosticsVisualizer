@@ -10,6 +10,7 @@ export AVTRACE_SNAPSHOT_INTERVAL_MS=250
 export AVTRACE_EVENTS_PER_THREAD=131072
 export AVTRACE_MAX_THREADS=16
 export AVTRACE_SAMPLE_EVERY=1
+export AVTRACE_BINDING_OPERATIONS=1
 export AVTRACE_ROUTED_EVENTS=1
 export AVTRACE_RESOURCE_LOOKUPS=1
 export AVTRACE_STYLE_EVALUATIONS=1
@@ -26,13 +27,20 @@ cp artifacts/integration/target/avtrace.manifest.json artifacts/integration/weav
 rm -f artifacts/integration/sample.avtrace
 AVTRACE_ENABLED=1 AVTRACE_FILE="$root/artifacts/integration/sample.avtrace" \
   timeout 45s dotnet artifacts/integration/target/DiagnosticsVisualizer.Sample.dll | tee artifacts/integration/workload.log
-grep -q 'WORKLOAD_OK clicks=24 direct=23 items=4' artifacts/integration/workload.log
-grep -q 'ROUTING_WORKLOAD_OK handlers=4 handled=false fault=observed' artifacts/integration/workload.log
-grep -q 'ASYNC_WORKLOAD_OK notifications=1' artifacts/integration/workload.log
-grep -q 'RESOURCE_WORKLOAD_OK deferred=0' artifacts/integration/workload.log
-grep -q 'DISPATCHER_WORKLOAD_OK completed=2 aborted=0 fault=observed' artifacts/integration/workload.log
-grep -q 'RESOURCE_LOOKUP_WORKLOAD_OK merged=higher theme=dark lazy=1 null=found missing=false opaque=safe fault=preserved' artifacts/integration/workload.log
-grep -q 'STYLE_WORKLOAD_OK active=0.25 local=0.8 cleared=0.25 inactive=1' artifacts/integration/workload.log
+check_workload() {
+  for expected in \
+    'WORKLOAD_OK clicks=24 direct=23 items=4' \
+    'ROUTING_WORKLOAD_OK handlers=4 handled=false fault=observed' \
+    'ASYNC_WORKLOAD_OK notifications=1' \
+    'RESOURCE_WORKLOAD_OK deferred=0' \
+    'DISPATCHER_WORKLOAD_OK completed=2 aborted=0 fault=observed' \
+    'RESOURCE_LOOKUP_WORKLOAD_OK merged=higher theme=dark lazy=1 null=found missing=false opaque=safe fault=preserved' \
+    'STYLE_WORKLOAD_OK active=0.25 local=0.8 cleared=0.25 inactive=1' \
+    'BINDING_WORKLOAD_OK' 'BINDING_DISPATCH_OK' 'BINDING_THEME_OK'; do
+    grep -q "$expected" "$1"
+  done
+}
+check_workload artifacts/integration/workload.log
 verifier=tests/DiagnosticsVisualizer.CaptureVerifier/bin/Release/net10.0/DiagnosticsVisualizer.CaptureVerifier.dll
 dotnet "$verifier" artifacts/integration/sample.avtrace artifacts/integration/capture-report.json
 collector=src/DiagnosticsVisualizer.Collector/bin/Release/net10.0/DiagnosticsVisualizer.Collector.dll
@@ -59,7 +67,8 @@ PY
 dotnet "$verifier" --remote ws://127.0.0.1:4317/trace artifacts/integration/remote-report.json > artifacts/integration/viewer.log 2>&1 &
 viewer_pid=$!
 AVTRACE_ENABLED=1 AVTRACE_ENDPOINT=tcp://127.0.0.1:4318 AVTRACE_UDP_ENDPOINT=127.0.0.1:4319 \
-  timeout 45s dotnet artifacts/integration/target/DiagnosticsVisualizer.Sample.dll | tee -a artifacts/integration/workload.log
+  timeout 45s dotnet artifacts/integration/target/DiagnosticsVisualizer.Sample.dll | tee artifacts/integration/remote-workload.log
+check_workload artifacts/integration/remote-workload.log
 wait "$viewer_pid"
 viewer_pid=
 python3 - <<'PY'
@@ -70,10 +79,11 @@ with urllib.request.urlopen('http://127.0.0.1:4317/health', timeout=5) as respon
 (root / 'network-report.json').write_text(json.dumps(health, indent=2))
 assert health['udpFrames'] > 0 and health['snapshotDeltaFrames'] > 0, health
 assert health['udpRejectedPackets'] == 0, health
-# This reference workload must retain every event locally; UDP delivery remains best-effort.
 for name in ('capture-report.json', 'remote-report.json'):
     report = json.loads((root / name).read_text())
     assert report['DroppedEvents'] == 0 and report['ProbeFaults'] == 0 and report['DeltaFrames'] > 0, (name, report)
+    assert report['Bindings']['CrossThreadDeliveries'] > 0 and report['Bindings']['InvalidMarkers'] == 0, (name, report)
+    print(name, json.dumps({key: value for key, value in report.items() if key != 'Findings'}))
 print(json.dumps(health))
 PY
 kill "$collector_pid"
