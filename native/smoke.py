@@ -63,6 +63,7 @@ while position<len(b):
 assert footer is not None and footer[0]==0,footer
 assert footer[3:6]==(0,0,0) and footer[9]==0,footer # drops, probe/I/O faults and ReJIT errors
 assert set(methods.values())==set(rules),methods
+assert set(status)==set(methods),'Every selected definition must retain its final reversion result'
 assert all(state==3 and hr==0 and count>0 for state,hr,count in status.values()),status
 assert len(threads)>=4,threads
 starts={};completed={};method_counts=collections.Counter();outcomes=collections.Counter()

@@ -42,7 +42,7 @@ public sealed class NativeReversionUiTests
             var index = view.Model.Analysis!.NativeCapture!;
             Assert.Equal(32, index.PairedSpans); Assert.Equal(0, index.InvalidGroups); Assert.True(index.Incomplete);
             Assert.Equal(2, index.Methods.Count(m => m.Status == "Reverted for future calls"));
-            Assert.Equal("0x80004005", Assert.Single(index.Methods.Where(m => m.Status == "Revert failed")).Error);
+            Assert.Equal("0x80004005", Assert.Single(index.Methods, m => m.Status == "Revert failed").Error);
             Assert.Contains("format v3", control.SummaryText); Assert.Contains("Incomplete coverage", control.SummaryText);
             Assert.Contains("not that old active frames ended", control.SummaryText);
             Assert.DoesNotContain("disabled probes remain", control.SummaryText);
