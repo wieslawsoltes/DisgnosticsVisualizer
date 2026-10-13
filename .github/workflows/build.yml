@@ -36,6 +36,10 @@ jobs:
         run: bash eng/pack.sh
       - name: Execute instrumented Avalonia locally and through the collector
         run: bash eng/integration.sh
+      - name: Install software EGL validation dependencies
+        run: sudo apt-get update && sudo apt-get install -y libegl1-mesa-dev libgl1-mesa-dri
+      - name: Execute packaged Skia GPU timestamp and GL-state checks
+        run: bash eng/gpu-integration.sh
       - name: Summarize executed tests and matched adapter counts
         if: always()
         run: |
@@ -65,6 +69,14 @@ jobs:
             artifacts/integration/*.log
             artifacts/performance/*.json
             artifacts/validation-summary.json
+            artifacts/gpu/*report.json
+            artifacts/gpu/*.log
+      - name: Retain actual software GL timestamp recording
+        uses: actions/upload-artifact@v4
+        with:
+          name: recorded-gpu-example
+          path: artifacts/gpu/capture.avtrace
+          retention-days: 14
       - name: Retain actual instrumented sample recording
         uses: actions/upload-artifact@v4
         with:

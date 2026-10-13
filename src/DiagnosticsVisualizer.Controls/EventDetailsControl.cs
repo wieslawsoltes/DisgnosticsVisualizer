@@ -56,6 +56,17 @@ public sealed class EventDetailsControl : UserControl
             rows.Insert(7, new("OS thread ID", thread?.OsThreadId.ToString() ?? "Not retained"));
             rows.Insert(8, new("Native outcome", NativeMethodEvent.Outcome(e)));
         }
+        if (GpuTimingEvent.IsMarker(e))
+        {
+            var phase = e.Data0 switch { GpuTimingEvent.Begin => "CPU submission admission", GpuTimingEvent.Submitted => "End timestamp issued",
+                GpuTimingEvent.CounterStart => "Device start counter read", GpuTimingEvent.CounterEnd => "Device end counter read",
+                GpuTimingEvent.Completed => ((GpuQueryOutcome)e.Data1).ToString(), _ => "Unknown" };
+            rows.Insert(2, new("GPU phase", phase));
+            if (trace.GpuSites.TryGetValue(e.NameId, out var site))
+            { rows.Add(new("GPU API", site.Api)); rows.Add(new("GPU renderer", site.Renderer)); rows.Add(new("GPU measurement", site.Limitation)); }
+            if (e.Data0 is GpuTimingEvent.CounterStart or GpuTimingEvent.CounterEnd)
+                rows.Add(new("Device timestamp", $"{unchecked((ulong)e.Data1)} ns (uncalibrated; not CPU time)"));
+        }
         _grid.ItemsSource = rows;
     }
 }
