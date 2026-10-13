@@ -3,6 +3,7 @@
 #include "signature.h"
 // Uses the pinned .NET Foundation profiling SDK and its MIT-licensed no-op callback base/IL list rewriter.
 #include "capture.h"
+#include "control.h"
 #include <profiler.h>
 #include <ilrewriter.h>
 #include <algorithm>
@@ -53,6 +54,9 @@ extern "C" void DVNativeLeave(uint64_t site,uint32_t outcome) noexcept { dv::Lea
 class NativeProfiler final : public Profiler {
     Com<ICorProfilerInfo10> info_;
     dv::Recorder* recorder_=nullptr;
+    std::unique_ptr<dv::ControlServer> control_;
+    uint32_t controlState_=0,controlRevision_=0,finishReason_=0;
+    bool finishRequested_=false;
     std::atomic<bool> stopping_{false}, workerDone_{false}, rewriteAllowed_{true};
     std::atomic<uint32_t> activeRewriters_{0};
     struct RewriteLease {
@@ -168,13 +172,15 @@ class NativeProfiler final : public Profiler {
     // Only the CLR-initialized worker invokes RequestRevert. Never block a runtime
     // callback waiting for that worker, and never unload calli targets still used by
     // an already-running invocation of the old instrumented body.
-    void Revert() {
+    dv::ControlResult Revert() {
+        reversionAttempted_=true;
+        dv::ControlResult reply;
         // A single sequentially consistent admission order closes the read/increment race.
         rewriteAllowed_.store(false);
         const auto deadline = dv::Clock() + 5000000000ull;
         while (activeRewriters_.load() != 0 && !stopping_.load() && dv::Clock() < deadline)
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        if (stopping_.load()) return; // CLR shutdown is not a safe place to request reversion.
+        if (stopping_.load()) return {4,0,0,E_ABORT}; // Never request reversion in CLR shutdown.
         std::vector<ModuleID> modules;
         std::vector<mdMethodDef> methods;
         std::vector<uint32_t> indices;
@@ -184,7 +190,8 @@ class NativeProfiler final : public Profiler {
                 modules.push_back(site.module); methods.push_back(site.token); indices.push_back(i);
             }
         }
-        if (methods.empty()) return;
+        reply.methods=uint32_t(methods.size());
+        if (methods.empty()) return {3,0,0,S_OK};
         // Top-level S_OK only means all requests were attempted. Each method's
         // HRESULT must independently establish whether original IL was restored.
         const auto timeout = static_cast<HRESULT>(static_cast<int32_t>(0x800705b4u));
@@ -196,23 +203,60 @@ class NativeProfiler final : public Profiler {
             auto& site = sites_[indices[i]];
             site.revertError=result;
             site.revertStatus=result == S_OK ? 3 : -8;
-            if (result != S_OK) recorder_->rejitErrors.fetch_add(1);
+            if (result != S_OK) { recorder_->rejitErrors.fetch_add(1); ++reply.failed; }
         }
+        reply.result=FAILED(hr)?hr:reply.failed?E_FAIL:S_OK;
+        reply.state=reply.result==S_OK?3:4;
+        return reply;
+    }
+    bool reversionAttempted_=false; // worker-owned; never issue two stop-time revert requests
+    void ControlState(uint32_t operation,int32_t result=0,uint32_t methods=0,uint32_t failed=0) {
+        std::vector<uint8_t> payload;dv::Append32(payload,++controlRevision_);dv::Append32(payload,controlState_);
+        dv::Append64(payload,dv::Clock());dv::Append32(payload,operation);dv::Append32(payload,uint32_t(result));
+        dv::Append32(payload,methods);dv::Append32(payload,failed);recorder_->Frame(6,payload);
+    }
+    dv::ControlResult Control(uint32_t operation) noexcept {
+      try {
+        dv::ControlResult result;
+        if(controlRevision_>=1023 && (operation==1 || operation==2))return {controlState_,0,0,E_OUTOFMEMORY};
+        if(operation==1 || operation==2){
+            const auto desired=operation==1?1u:0u;
+            if(controlState_!=desired){controlState_=desired;recorder_->paused.store(desired!=0,std::memory_order_release);ControlState(operation);}
+        } else if(operation==3 || operation==4){
+            // Existing frames retain calli addresses. Close admission but keep callbacks resident.
+            finishRequested_=true;finishReason_=5;controlState_=2;recorder_->accepting.store(false,std::memory_order_release);
+            if(operation==4){
+                result=Revert();controlState_=result.state;finishReason_=controlState_==3?6:7;
+            }
+            ControlState(operation,result.result,result.methods,result.failed);
+        }
+        result.state=controlState_;return result;
+      } catch (...) {
+        recorder_->faults.fetch_add(1);recorder_->accepting.store(false);
+        finishRequested_=true;finishReason_=2;return {controlState_,0,0,E_FAIL};
+      }
     }
     void Worker() noexcept {
         try {
             const auto initialized=info_->InitializeCurrentThread();
             if(FAILED(initialized)) {recorder_->faults.fetch_add(1);stopping_.store(true);}
             const auto deadline=dv::Clock()+uint64_t(recorder_->config.durationMs)*1000000;
-            uint64_t nextScan=0;
-            while(!stopping_.load() && recorder_->accepting.load() && dv::Clock()<deadline) {
-                const auto now=dv::Clock();if(now>=nextScan){Scan();nextScan=now+250000000;}
+            uint64_t nextScan=0,nextHeartbeat=0;
+            if(control_)ControlState(0);
+            while(!stopping_.load() && (recorder_->accepting.load() || finishRequested_ && control_ && control_->Pending()) && dv::Clock()<deadline) {
+                if(control_)control_->Poll([this](uint32_t operation){return Control(operation);});
+                const auto now=dv::Clock();if(!finishRequested_ && now>=nextScan){Scan();nextScan=now+250000000;}
+                if(control_ && now>=nextHeartbeat && !finishRequested_){
+                    std::vector<uint8_t> heartbeat;dv::Append64(heartbeat,now);dv::Append32(heartbeat,controlState_);dv::Append32(heartbeat,controlRevision_);
+                    recorder_->Frame(7,heartbeat);nextHeartbeat=now+1000000000;
+                }
                 Statuses();recorder_->Drain();std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }
             recorder_->accepting.store(false);
-            if (!stopping_.load()) Revert();
-            Statuses();recorder_->Finish(stopping_.load()?1:0);
+            if (!stopping_.load() && !reversionAttempted_) Revert();
+            Statuses();recorder_->Finish(stopping_.load()?1:finishRequested_?finishReason_:0);
         } catch(...) {recorder_->faults.fetch_add(1);recorder_->Finish(2);}
+        control_.reset();
         workerDone_.store(true,std::memory_order_release);Release();
     }
 public:
@@ -224,6 +268,10 @@ public:
             HRESULT hr=runtime->QueryInterface(IID_ICorProfilerInfo10,reinterpret_cast<void**>(info_.Address()));if(FAILED(hr))return hr;
             hr=info_->SetEventMask(COR_PRF_ENABLE_REJIT|COR_PRF_MONITOR_MODULE_LOADS|COR_PRF_MONITOR_JIT_COMPILATION);
             if(FAILED(hr))return hr;
+            if(config.controlPort){
+                control_=std::make_unique<dv::ControlServer>();
+                if(!control_->Open(config.controlPort,config.session,config.controlToken)){control_.reset();return E_FAIL;}
+            }
             auto record=std::make_unique<dv::Recorder>(std::move(config));if(!record->Open())return E_FAIL;
             recorder_=record.release();dv::PublishRecorder(recorder_);return S_OK;
         } catch(...) {return E_FAIL;}

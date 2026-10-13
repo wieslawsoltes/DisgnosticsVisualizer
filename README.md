@@ -4,7 +4,13 @@ Cross-subsystem Avalonia recording, analysis and a shared desktop/WebAssembly Ri
 
 [Browser workbench](https://wieslawsoltes.github.io/DisgnosticsVisualizer/) · [Build and integration](https://github.com/wieslawsoltes/DisgnosticsVisualizer/actions/workflows/build.yml) · [Browser verification and deployment](https://github.com/wieslawsoltes/DisgnosticsVisualizer/actions/workflows/browser.yml)
 
-**0.1.0-alpha.15.** The browser starts with an explicitly labelled synthetic example, not a live attachment. This is an actively validated implementation, not a claim that every Avalonia release, native backend or DevTools capability is covered. Check workflow results for deployment status.
+**0.1.0-alpha.16.** The browser starts with an explicitly labelled synthetic example, not a live attachment. This is an actively validated implementation, not a claim that every Avalonia release, native backend or DevTools capability is covered. Check workflow results for deployment status.
+
+## New in alpha.16: native recording control
+
+Native capture now supports opt-in, session-bound pause/resume and explicit stop/revert. A live sidecar must authenticate a separate loopback capability before the shared workbench enables controls. Paused roots stay excluded across resume; admitted calls can finish without corrupting parentage. State changes, heartbeat freshness and per-method revert results survive import/export. The native library remains resident for the safety of existing rewritten frames; this is not DLL unload or CLR detach. See [native control](docs/native-control.md) for configuration, limits, tests and the distinction between acknowledgement and finalization.
+
+
 
 ## New in alpha.15
 
@@ -101,7 +107,7 @@ Run `bash eng/pack.sh` to build the local feed. Until NuGet.org publication, add
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="DiagnosticsVisualizer.Build" Version="0.1.0-alpha.15" />
+  <PackageReference Include="DiagnosticsVisualizer.Build" Version="0.1.0-alpha.16" />
 </ItemGroup>
 ```
 

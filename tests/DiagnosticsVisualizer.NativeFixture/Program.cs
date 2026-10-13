@@ -9,6 +9,7 @@ public static class Program
     private static readonly int[] Values = [17];
     public static int Main(string[] args)
     {
+        if (args.Length == 1 && args[0] == "control") return Controlled();
         var watch = Stopwatch.StartNew();
         // Warm before attachment; loop continues without any application diagnostics reference.
         for (var n = 0; n < 10000; n++) Work();
@@ -21,6 +22,25 @@ public static class Program
         Console.WriteLine(JsonSerializer.Serialize(new { status = "verified", iterations = _iterations, finallyCount = _finally }));
         return _finally == _iterations ? 0 : 3;
     }
+    private static readonly ManualResetEventSlim HeldStarted = new(), HeldRelease = new();
+    private static int Controlled()
+    {
+        for (var i = 0; i < 100; i++) Work();
+        Console.WriteLine($"READY {Environment.ProcessId}");
+        Thread? held = null;
+        while (Console.ReadLine() is { } command)
+        {
+            if (command == "run") { for (var i = 0; i < 50; i++) Work(); Console.WriteLine("RUN_OK"); }
+            else if (command == "hold") { HeldStarted.Reset(); HeldRelease.Reset(); held = new Thread(Held); held.Start(); if (!HeldStarted.Wait(5000)) return 4; Console.WriteLine("HOLD_OK"); }
+            else if (command == "release") { HeldRelease.Set(); if (held is null || !held.Join(5000)) return 5; held = null; Console.WriteLine("RELEASE_OK"); }
+            else if (command == "quit") { HeldRelease.Set(); held?.Join(); Console.WriteLine("CONTROL_WORKLOAD_OK"); return _finally == _iterations ? 0 : 6; }
+            else return 7;
+            Console.Out.Flush();
+        }
+        return 8;
+    }
+    [MethodImpl(MethodImplOptions.NoInlining)] public static void Held()
+    { HeldStarted.Set(); if (!HeldRelease.Wait(10000) || Add(2, 3) != 5) throw new InvalidOperationException("Held invocation changed"); }
     [MethodImpl(MethodImplOptions.NoInlining)] public static int Work()
     {
         Interlocked.Increment(ref _iterations);

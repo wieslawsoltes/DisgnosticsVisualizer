@@ -36,11 +36,12 @@ internal static class NativeCaptureCommands
                 return 0;
             }
             if (args.Length < 3) throw new ArgumentException("NativeCapture relay <recording.dvntrace> <tcp://host:port|tls://host:port> [--follow] [--attempts 3] [--idle-ms 30000]");
-            var follow = false; var attempts = 3; var idle = 30000;
+            var follow = false; var attempts = 3; var idle = 30000; var controlPort = 0;
             for (var i = 3; i < args.Length; i++)
             {
                 switch (args[i])
                 {
+                    case "--control-port" when i + 1 < args.Length: controlPort = int.Parse(args[++i], CultureInfo.InvariantCulture); break;
                     case "--follow" when !follow: follow = true; break;
                     case "--attempts" when i + 1 < args.Length: attempts = int.Parse(args[++i], CultureInfo.InvariantCulture); break;
                     case "--idle-ms" when i + 1 < args.Length: idle = int.Parse(args[++i], CultureInfo.InvariantCulture); break;
@@ -48,11 +49,12 @@ internal static class NativeCaptureCommands
                 }
             }
             var token = Environment.GetEnvironmentVariable("AVTRACE_TOKEN") ?? throw new ArgumentException("Set AVTRACE_TOKEN; credentials are never accepted in the URL or arguments.");
+            using var control = controlPort == 0 ? null : new NativeControlClient(controlPort, Environment.GetEnvironmentVariable("AVTRACE_NATIVE_CONTROL_TOKEN") ?? throw new ArgumentException("Set AVTRACE_NATIVE_CONTROL_TOKEN."));
             await using var source = OpenInput(args[1]);
             var result = await NativeRelayClient.RelayAsync(source, new Uri(args[2], UriKind.Absolute), token,
-                new() { Follow = follow, MaximumAttempts = attempts, IdleTimeout = TimeSpan.FromMilliseconds(idle) }, stop.Token);
+                new() { Follow = follow, TargetControl = control, MaximumAttempts = attempts, IdleTimeout = TimeSpan.FromMilliseconds(idle) }, stop.Token);
             Console.WriteLine(JsonSerializer.Serialize(new { status = "relayed", result.Capture.Events, result.Attempts, result.FramesSent,
-                result.UniqueDecodedFrames, result.ReplayedFrames, note = "Reliable writes, not end-to-end acknowledgements. Reconnect replay preserves session/sequence. Native target control is not supported." }));
+                result.UniqueDecodedFrames, result.ReplayedFrames, note = "Reliable writes, not end-to-end acknowledgements. Reconnect replay preserves session/sequence. Target control is explicit opt-in; canceling the relay does not stop the target." }));
             return 0;
         }
         catch (OperationCanceledException) { Console.Error.WriteLine("Native sidecar canceled; this does not stop or unload the target profiler."); return 130; }

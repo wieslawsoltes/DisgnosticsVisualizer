@@ -57,6 +57,7 @@ jobs:
           elif [[ "$RUNNER_OS" == macOS ]]; then LIB="$PWD/artifacts/native-build/libDiagnosticsVisualizerProfiler.dylib";
           else LIB="$PWD/artifacts/native-build/libDiagnosticsVisualizerProfiler.so"; fi
           python native/smoke.py "$LIB"
+          python native/control_smoke.py "$LIB"
           python native/relay_smoke.py "$LIB"
           python native/validate_streaming.py
       - name: Stage native redistributable with dependency attribution
@@ -77,6 +78,9 @@ jobs:
             artifacts/native/*.log
             artifacts/native-package/
             artifacts/native/converted.avtrace
+            artifacts/native-control/*.json
+            artifacts/native-control/*.log
+            artifacts/native-control/controlled.dvntrace
             artifacts/native-relay/*.json
             artifacts/native-relay/*.log
           retention-days: 14

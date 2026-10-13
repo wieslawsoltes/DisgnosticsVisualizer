@@ -30,10 +30,28 @@ void Budget() {
         std::vector<uint8_t> status; dv::Append32(status,site);dv::Append32(status,round==0?2:3);dv::Append32(status,0);dv::Append32(status,1);
         Require(recorder->Frame(4,status), "Final method status allowance was exhausted");
     }
+    Require(recorder->Frame(6,std::vector<uint8_t>(32)), "Final control state allowance was exhausted");
     recorder->Finish(0);
     Require(recorder->ioFaults.load()==0 && recorder->faults.load()==0, "Writer fault at capacity");
     Require(std::filesystem::file_size(file.path)<=128ull*1024*1024, "Native file exceeded capacity");
     std::cout << "BUDGET_OK payloadFrames=" << frames << " statusFrames=" << 2*dv::SiteLimit << '\n';
+}
+void PauseAdmission() {
+    TemporaryFile file;
+    dv::Configuration config; config.path=file.path.string();
+    auto recorder=std::make_unique<dv::Recorder>(std::move(config));
+    Require(recorder->Open(), "Could not create unique pause fixture");file.created=true;
+    dv::PublishRecorder(recorder.get());recorder->accepting.store(true);
+    dv::Enter(1);recorder->paused.store(true);dv::Enter(2);dv::Leave(2,1);dv::Leave(1,1);
+    dv::Enter(3);recorder->paused.store(false);dv::Enter(4);dv::Leave(4,1);dv::Leave(3,1);
+    dv::Enter(5);dv::Leave(5,1);
+    auto& thread=recorder->threads[0];
+    Require(thread.write.load()==6 && thread.depth==0, "Pause/resume corrupted admission or nesting");
+    Require(thread.events[1].parent==thread.events[0].cookie, "An admitted child lost its parent while paused");
+    Require(thread.events[4].site==5 && thread.events[4].parent==0, "Suppressed tree acquired a recorded child after resume");
+    recorder->Finish(0);
+    Require(recorder->dropped.load()==0 && recorder->faults.load()==0 && recorder->ioFaults.load()==0, "Intentional paused exclusion became loss");
+    dv::PublishRecorder(nullptr);std::cout << "PAUSE_ADMISSION_OK paired=3 excludedRoots=1\n";
 }
 void StopRace() {
     TemporaryFile file;
@@ -67,7 +85,7 @@ int main(int argc,char** argv) {
     try {
         Require(argc==2, "Specify budget or stop-race");
         const std::string test=argv[1];
-        if(test=="budget") Budget(); else if(test=="stop-race") StopRace(); else throw std::invalid_argument("Unknown test");
+        if(test=="budget") Budget(); else if(test=="stop-race") StopRace(); else if(test=="pause") PauseAdmission(); else throw std::invalid_argument("Unknown test");
         return 0;
     } catch(const std::exception& error) { std::cerr<<error.what()<<'\n';return 1; }
 }

@@ -56,8 +56,10 @@ public sealed class NativeCaptureControl : UserControl
         _summary.Text = index?.Process is not { } process ? "No native recorder provenance. Open a .dvntrace file created by the explicit NativeCapture attach command; opening a recording never attaches or executes code." :
             $"Process {process.ProcessId} · format v{process.FormatVersion}{(process.FormatVersion == 1 ? " (unchecked legacy header)" : "")} · {process.PointerBytes * 8}-bit · {index.Methods.Length:N0} selected definitions · {index.Threads.Length:N0} OS threads\n" +
             $"{index.PairedSpans:N0} paired spans · {index.UnmatchedEntries:N0} unmatched entries · {index.UnmatchedCompletions:N0} unmatched completions · {index.InvalidGroups:N0} invalid groups\n" +
+            (index.Control is { } control ? $"Control: {control.StateText} · revision {control.Revision} · {control.Methods} revert requests / {control.FailedMethods} failures\n" : "") +
             (index.End is { HasFooter: true } end ? $"Terminal status: {StopReason(end.Reason)} · {end.DroppedRecords:N0} drops · {end.RecorderFaults:N0} recorder faults · {end.IoFaults:N0} I/O faults · {end.RejitErrors:N0} ReJIT errors\n" : "Terminal integrity is UNKNOWN: no complete footer was retained.\n") +
             (index.Incomplete ? "Incomplete coverage; missing observations cannot establish that a call did not occur. " : "Complete terminal metadata for this retained capture. ") +
+            (process.FormatVersion >= 4 ? "Pause excludes new roots; admitted trees may finish. Revert is future-only; the native library remains resident. " : "") +
             (process.FormatVersion >= 3
                 ? "Reverted means the CLR accepted original IL for future calls, not that old active frames ended. The profiler library stays loaded; inliner optimization is not restored by this status."
                 : "IL supplied is not execution proof. This older recorder does not revert on stop; disabled probes remain until process exit.");
@@ -71,5 +73,5 @@ public sealed class NativeCaptureControl : UserControl
         try { _methods.ItemsSource = rows; _methods.SelectedItem = rows.FirstOrDefault(r => r.SiteId == old); }
         finally { _updating = false; }
     }
-    private static string StopReason(int reason) => reason switch { 0 => "duration reached", 1 => "runtime shutdown", 2 => "worker failure", 3 => "file budget reached", _ => "unavailable" };
+    private static string StopReason(int reason) => reason switch { 0 => "duration reached", 1 => "runtime shutdown", 2 => "worker failure", 3 => "file budget reached", 5 => "user stop", 6 => "user stop / revert accepted", 7 => "user stop / incomplete revert", _ => "unavailable" };
 }

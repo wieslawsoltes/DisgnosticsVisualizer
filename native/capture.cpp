@@ -82,7 +82,7 @@ void Append32(std::vector<uint8_t>& p,uint32_t value) { for (unsigned n=0;n<4;++
 void Append64(std::vector<uint8_t>& p,uint64_t value) { for (unsigned n=0;n<8;++n) p.push_back(uint8_t(value>>(8*n))); }
 void AppendString(std::vector<uint8_t>& p,const std::string& s) { Append32(p,uint32_t(s.size())); p.insert(p.end(),s.begin(),s.end()); }
 Configuration Configuration::Parse(const uint8_t* data,size_t length) {
-    if (!data || length<48 || length>60000 || std::memcmp(data,"DVNP0001",8)) throw std::invalid_argument("Invalid native configuration header");
+    if (!data || length<48 || length>60000 || (std::memcmp(data,"DVNP0001",8) && std::memcmp(data,"DVNP0002",8))) throw std::invalid_argument("Invalid native configuration header");
     const auto* p=data+8; const auto* end=data+length; Configuration cfg;
     cfg.durationMs=Read32(p,end); cfg.sampleEvery=Read32(p,end); cfg.utcTicks=Read64(p,end);
     if (cfg.durationMs<100 || cfg.durationMs>3600000 || cfg.sampleEvery==0 || cfg.sampleEvery>1000000 || end-p<16) throw std::invalid_argument("Invalid capture budget");
@@ -90,6 +90,11 @@ Configuration Configuration::Parse(const uint8_t* data,size_t length) {
     cfg.path=ReadString(p,end,4096);
     const auto count=Read32(p,end); if (count==0 || count>64) throw std::invalid_argument("Specify 1..64 exact method selectors");
     for (uint32_t i=0;i<count;++i) { auto rule=ReadString(p,end,1024); if (rule.find('!')==std::string::npos || rule.find("::")==std::string::npos || rule.find('*')!=std::string::npos) throw std::invalid_argument("Invalid exact selector"); cfg.rules.push_back(std::move(rule)); }
+    if (data[7]=='2') {
+        const auto port=Read32(p,end);if(port==0 || port>65535 || end-p!=32)throw std::invalid_argument("Invalid control capability");
+        cfg.controlPort=uint16_t(port);std::copy(p,p+32,cfg.controlToken.begin());p+=32;
+        if(std::all_of(cfg.controlToken.begin(),cfg.controlToken.end(),[](auto b){return b==0;}))throw std::invalid_argument("Empty control token");
+    }
     if (p!=end) throw std::invalid_argument("Trailing native configuration bytes"); return cfg;
 }
 Recorder::Recorder(Configuration cfg) : config(std::move(cfg)), origin(Clock()) {}
@@ -107,7 +112,7 @@ bool Recorder::Open() {
     if (fd<0) return false; file_=fdopen(fd,"wb"); if (!file_) { close(fd); return false; }
 #endif
     std::vector<uint8_t> header{'D','V','N','T','R','C','0','1'};
-    Append32(header,3); Append32(header,0); Append64(header,1000000000); Append64(header,origin); Append64(header,config.utcTicks);
+    Append32(header,config.controlPort?4:3); Append32(header,0); Append64(header,1000000000); Append64(header,origin); Append64(header,config.utcTicks);
     header.insert(header.end(),config.session.begin(),config.session.end());
 #ifdef _WIN32
     Append32(header,GetCurrentProcessId());
@@ -124,7 +129,7 @@ bool Recorder::Write(const void* p,size_t n) noexcept {
 bool Recorder::Frame(uint32_t kind,const std::vector<uint8_t>& p) noexcept {
     // The sole writer reserves two complete method-status rounds plus the footer.
     // A stop can occur during Scan/Statuses, followed by final reversion statuses.
-    const uint64_t reserve = kind==4 && !accepting.load() ? 1024 : 1024+2ull*SiteLimit*28;
+    const uint64_t reserve = (kind==4 || kind==6) && !accepting.load() ? 1024 : 1024+2ull*SiteLimit*28;
     if (kind!=5 && bytes_+p.size()+12>128ull*1024*1024-reserve) { budgetExceeded_=true; accepting.store(false); return false; }
     uint8_t header[12]; const uint32_t values[]={kind,uint32_t(p.size()),0};
     for (unsigned n=0;n<3;++n) for (unsigned i=0;i<4;++i) header[n*4+i]=uint8_t(values[n]>>(i*8));
@@ -178,11 +183,14 @@ void Recorder::Finish(uint32_t reason) noexcept {
 void Enter(uint32_t site) noexcept {
     Guard guard; if (!guard.enabled) return; auto& recorder=*guard.recorder; auto* slot=recorder.Thread(); if (!slot) return;
     if (slot->depth>=StackCapacity || slot->overflow) { ++slot->overflow; recorder.dropped.fetch_add(1); return; }
+    // Stamp before reading the admission gate: a root admitted before pause cannot
+    // acquire an apparent start time after the subsequently recorded transition.
+    const auto start=Clock();
     const auto parent=slot->depth ? slot->stack[slot->depth-1].cookie : 0;
-    const bool sampled=slot->depth ? parent!=0 : (++slot->samples % recorder.config.sampleEvery)==0;
+    const bool sampled=slot->depth ? parent!=0 : !recorder.paused.load(std::memory_order_acquire) && (++slot->samples % recorder.config.sampleEvery)==0;
     if (sampled && slot->sequence==0xffffffffffffull) { recorder.faults.fetch_add(1); recorder.accepting.store(false); return; }
     const auto cookie=sampled ? ((uint64_t(slot->ordinal)<<48)|++slot->sequence) : 0;
-    auto& entry=slot->stack[slot->depth++]; entry={cookie,parent,Clock(),site};
+    auto& entry=slot->stack[slot->depth++]; entry={cookie,parent,start,site};
     if (cookie) recorder.Put(*slot,{cookie,parent,entry.start,0,site,slot->ordinal,0,0});
 }
 void Leave(uint32_t site,uint32_t outcome) noexcept {

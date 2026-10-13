@@ -14,8 +14,8 @@ public sealed record NativeRelayResult(TraceReadResult Capture, int Connections,
 public static class NativeCaptureRelay
 {
     public static Task<TraceReadResult> RunAsync(Stream source, IFrameConnection destination,
-        TimeSpan idleTimeout, CancellationToken cancellationToken = default, bool follow = true) =>
-        RunCoreAsync(source, destination, idleTimeout, null, cancellationToken, follow);
+        TimeSpan idleTimeout, CancellationToken cancellationToken = default, bool follow = true, INativeTargetController? targetControl = null) =>
+        RunCoreAsync(source, destination, idleTimeout, null, cancellationToken, follow, targetControl);
 
     /// <summary>Owns and disposes each returned stream/connection. Never reattaches a profiler on reconnect.</summary>
     public static async Task<NativeRelayResult> RunWithReconnectAsync(Func<Stream> openSource,
@@ -54,13 +54,15 @@ public static class NativeCaptureRelay
         }
     }
     private static async Task<TraceReadResult> RunCoreAsync(Stream source, IFrameConnection destination,
-        TimeSpan idleTimeout, Action<TraceBlock>? inspect, CancellationToken cancellationToken, bool follow = true)
+        TimeSpan idleTimeout, Action<TraceBlock>? inspect, CancellationToken cancellationToken, bool follow = true, INativeTargetController? targetControl = null)
     {
         ArgumentNullException.ThrowIfNull(source); ArgumentNullException.ThrowIfNull(destination);
+        if (targetControl is not null && !follow) throw new ArgumentException("Control requires live native capture following.");
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var replies = ReplyAsync(destination, stop.Token);
+        var session = new TaskCompletionSource<Guid>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var replies = ReplyAsync(destination, session.Task, targetControl, stop.Token);
         ValueTask Send(TraceBlock block)
-        { inspect?.Invoke(block); return destination.SendAsync(TraceCodec.Encode(block), stop.Token); }
+        { session.TrySetResult(block.SessionId); inspect?.Invoke(block); return destination.SendAsync(TraceCodec.Encode(block), stop.Token); }
         var read = follow ? NativeTraceFile.FollowAsync(source, Send, idleTimeout, stop.Token)
             : NativeTraceFile.ReadAsync(source, Send, false, stop.Token);
         try
@@ -81,14 +83,17 @@ public static class NativeCaptureRelay
             try { await replies.ConfigureAwait(false); } catch { }
         }
     }
-    private static async Task ReplyAsync(IFrameConnection connection, CancellationToken cancellationToken)
+    private static async Task ReplyAsync(IFrameConnection connection, Task<Guid> session, INativeTargetController? targetControl, CancellationToken cancellationToken)
     {
         while (await connection.ReceiveAsync(cancellationToken).ConfigureAwait(false) is { } frame)
         {
             var command = CommandCodec.Decode(frame);
             if (command.Kind == CommandKind.Response) continue; // Session acknowledgement, not target control.
-            var text = command.Kind == CommandKind.Ping ? "PONG" : command.Kind == CommandKind.RequestSnapshot
-                ? "UNSUPPORTED_NATIVE_SNAPSHOT" : "UNSUPPORTED_NATIVE_CONTROL";
+            var text = command.Kind == CommandKind.Capabilities ? (targetControl is null ? "NATIVE_READ_ONLY" :
+                await targetControl.ExecuteAsync(await session.WaitAsync(cancellationToken).ConfigureAwait(false), command, cancellationToken).ConfigureAwait(false))
+                : command.Kind == CommandKind.Ping ? "PONG" : command.Kind == CommandKind.RequestSnapshot
+                ? "UNSUPPORTED_NATIVE_SNAPSHOT" : targetControl is null ? "UNSUPPORTED_NATIVE_CONTROL"
+                : await targetControl.ExecuteAsync(await session.WaitAsync(cancellationToken).ConfigureAwait(false), command, cancellationToken).ConfigureAwait(false);
             await connection.SendAsync(CommandCodec.Encode(new(command.RequestId, CommandKind.Response, 0, text)), cancellationToken).ConfigureAwait(false);
         }
     }

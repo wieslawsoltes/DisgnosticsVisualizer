@@ -6,12 +6,14 @@ namespace DiagnosticsVisualizer.Transport;
 public sealed record NativeRelayOptions
 {
     public bool Follow { get; init; }
+    public INativeTargetController? TargetControl { get; init; }
     public TimeSpan IdleTimeout { get; init; } = TimeSpan.FromSeconds(30);
     public int MaximumAttempts { get; init; } = 3;
     public TimeSpan RetryDelay { get; init; } = TimeSpan.FromMilliseconds(250);
     public int MaximumReplayFrames { get; init; } = 131072;
     internal void Validate()
     {
+        if (TargetControl is not null && !Follow) throw new ArgumentException("Native target control requires explicit live following.");
         if (MaximumAttempts is < 1 or > 10 || MaximumReplayFrames is < 1 or > 1_000_000 ||
             IdleTimeout < TimeSpan.FromMilliseconds(100) || IdleTimeout > TimeSpan.FromHours(1) ||
             RetryDelay < TimeSpan.Zero || RetryDelay > TimeSpan.FromSeconds(30))
@@ -58,7 +60,7 @@ public static class NativeRelayClient
                 await using var verified = new ReplayGuard(connection, digests, options.MaximumReplayFrames,
                     replay => { sent++; if (replay) replayed++; });
                 var result = await NativeCaptureRelay.RunAsync(source, verified, options.IdleTimeout,
-                    cancellationToken, options.Follow).ConfigureAwait(false);
+                    cancellationToken, options.Follow, options.TargetControl).ConfigureAwait(false);
                 if (verified.Frames < digests.Count) throw new InvalidDataException("Replay ended before previously decoded frames.");
                 return new(result, attempt, sent, digests.Count, replayed);
             }

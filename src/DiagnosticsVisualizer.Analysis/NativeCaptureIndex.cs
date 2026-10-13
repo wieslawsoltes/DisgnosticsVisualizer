@@ -10,6 +10,7 @@ public sealed class NativeCaptureIndex
 {
     public NativeProcessInfo? Process { get; }
     public NativeCaptureEnd? End { get; }
+    public NativeControlState? Control { get; }
     public NativeMethodRow[] Methods { get; }
     public NativeThreadInfo[] Threads { get; }
     public int InvalidGroups { get; }
@@ -28,6 +29,7 @@ public sealed class NativeCaptureIndex
     {
         Process = trace.NativeMetadata.GetValueOrDefault((1, 0)) as NativeProcessInfo;
         End = trace.NativeMetadata.GetValueOrDefault((4, 0)) as NativeCaptureEnd;
+        Control = trace.NativeMetadata.GetValueOrDefault((5, 0)) as NativeControlState;
         Threads = trace.NativeMetadata.Values.OfType<NativeThreadInfo>().OrderBy(t => t.Slot).ToArray();
         var slots = Threads.Select(t => t.Slot).ToHashSet();
         var statuses = trace.NativeMetadata.Values.OfType<NativeMethodInfo>().ToDictionary(m => m.SiteId);
@@ -79,7 +81,7 @@ public sealed class NativeCaptureIndex
                 Status(status?.Status), status is { HResult: not 0 } ? $"0x{unchecked((uint)status.HResult):X8}" : "—", status?.Compilations ?? 0,
                 sum.Complete, sum.Unwound, sum.MissingExit, sum.MissingEntry, sum.Ticks * 1000 / trace.Frequency, sum.FirstEvent);
         }).ToArray();
-        Incomplete = Process is null || End is null || !End.HasFooter || End.TruncatedTail || End.Reason is 2 or 3 || End.Records != nativeEventCount ||
+        Incomplete = Process is null || End is null || !End.HasFooter || End.TruncatedTail || End.Reason is 2 or 3 or 7 || End.Records != nativeEventCount ||
             End.DroppedRecords != 0 || End.RecorderFaults != 0 || End.IoFaults != 0 || End.RejitErrors != 0 || End.OpenFrames != 0 ||
             trace.DroppedEvents != 0 || trace.ProbeFaults != 0 || trace.MetadataDrops != 0 || trace.MissingBlocks != 0 || trace.EvictedEvents != 0 ||
             statuses.Values.Any(s => s.Status < 0) || InvalidGroups != 0 || UnmatchedEntries != 0 || UnmatchedCompletions != 0;

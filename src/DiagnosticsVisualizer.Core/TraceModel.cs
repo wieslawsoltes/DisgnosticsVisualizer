@@ -12,7 +12,7 @@ public enum Subsystem : byte
 public enum TraceEventKind : byte { Span, Instant, Counter, Link }
 public enum CommandKind : byte
 {
-    Authenticate, RequestSnapshot, SelectObject, Pause, Resume, Ping, Response
+    Authenticate, RequestSnapshot, SelectObject, Pause, Resume, Ping, Response, Capabilities
 }
 
 /// <summary>All times use the source process' monotonic clock, not wall time.</summary>
