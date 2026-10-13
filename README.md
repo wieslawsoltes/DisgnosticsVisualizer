@@ -34,9 +34,13 @@ published through the existing trusted-publishing workflow.
 
 Values remain private by default. `AVTRACE_PROPERTY_SCALARS=1` independently permits Boolean/integer/float/double payloads; strings and arbitrary structs remain redacted. `Workspace: Properties` and `Show Property history` expose searchable histories, resizable panels, selected-call/identity/source navigation and a **discrete notification chart**, not interpolated state. See [property-history contracts and validation](docs/property-history.md).
 
+### Native viewer and sidecar development increment
+
+Native `.dvntrace` files now open in the shared desktop/browser model, retain typed provenance on export, and have a Rider **Native** coverage preset. `NativeCapture convert` creates a standard recording; `NativeCapture relay` follows a native file over authenticated TCP/TLS with bounded, content-checked reconnect replay. The collector retains native metadata for late viewers independently from its event tail. [Usage, measurement contracts and remaining capabilities](docs/native-viewer-sidecar.md).
+
 ## Workbench and recorded semantics
 
-The actual **Dock Rider Dark compact** theme is scoped to diagnostics and detached documents, without forcing an embedding application into dark mode. Shared tabbing, splitting, pinning, managed/native floating windows and persistent workspace topology support Inspect, Profile, Compare, Investigate, Resources, Styling and Properties presets. Existing layouts survive added documents. Invalid, oversized or duplicate layouts are rejected before live mutation; settings contain panel identities/geometry, not trace data or tokens.
+The actual **Dock Rider Dark compact** theme is scoped to diagnostics and detached documents, without forcing an embedding application into dark mode. Shared tabbing, splitting, pinning, managed/native floating windows and persistent workspace topology support Inspect, Profile, Compare, Investigate, Resources, Styling, Properties and Native presets. Existing layouts survive added documents. Invalid, oversized or duplicate layouts are rejected before live mutation; settings contain panel identities/geometry, not trace data or tokens.
 
 Synchronized subsystem timelines/thread flame charts, causal chains, latency statistics, top-down/bottom-up calling contexts, thread span coverage, baseline comparison, independent visual/logical trees, property/precedence/resource inspection, layout scenes, checkpoint differences, bookmarks, capture health and queryable event logs share selection and navigation history.
 

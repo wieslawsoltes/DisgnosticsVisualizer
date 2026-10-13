@@ -14,7 +14,7 @@ public sealed class NativeRelayTests
         var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".dvntrace");
         try
         {
-            var bytes = NativeCaptureTests.Recording();
+            var bytes = NativeCaptureCompatibilityTests.Recording();
             await using var writer = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.ReadWrite);
             await writer.WriteAsync(bytes.AsMemory(0, bytes.Length - 92)); await writer.FlushAsync();
             await using var source = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 4096, FileOptions.Asynchronous);
@@ -37,7 +37,7 @@ public sealed class NativeRelayTests
     [Fact] public async Task ReconnectReplaysStableIdentitiesWithoutDuplicateEvents()
     {
         var peer = new Peer(failAt: 4); var peer2 = new Peer(store: peer.Store); var count = 0;
-        var result = await NativeCaptureRelay.RunWithReconnectAsync(() => new MemoryStream(NativeCaptureTests.Recording()),
+        var result = await NativeCaptureRelay.RunWithReconnectAsync(() => new MemoryStream(NativeCaptureCompatibilityTests.Recording()),
             _ => Task.FromResult<IFrameConnection>(++count == 1 ? peer : peer2), TimeSpan.FromSeconds(1), 1);
         Assert.Equal(2, result.Connections); Assert.Equal(1, result.Reconnects);
         Assert.Equal(2, peer.Store.Count); Assert.Equal(0, peer.Store.GetView().MissingBlocks);
@@ -48,7 +48,7 @@ public sealed class NativeRelayTests
         var peer = new Peer(failAt: 4); var count = 0;
         await Assert.ThrowsAsync<InvalidDataException>(() => NativeCaptureRelay.RunWithReconnectAsync(() =>
         {
-            var bytes = NativeCaptureTests.Recording();
+            var bytes = NativeCaptureCompatibilityTests.Recording();
             if (count == 2)
             {
                 bytes[40] ^= 1;
@@ -57,18 +57,36 @@ public sealed class NativeRelayTests
             return new MemoryStream(bytes);
         }, _ => Task.FromResult<IFrameConnection>(++count == 1 ? peer : new Peer()), TimeSpan.FromSeconds(1), 1));
     }
+    [Fact] public async Task ReopenedSourceCannotChangeAnAlreadyDecodedPrefix()
+    {
+        var first = new Peer(failAt: 4); var connections = 0;
+        await Assert.ThrowsAsync<InvalidDataException>(() => NativeCaptureRelay.RunWithReconnectAsync(() =>
+        {
+            var bytes = NativeCaptureCompatibilityTests.Recording();
+            if (connections == 2)
+            {
+                // Alter a method name and repair the frame CRC, retaining the original session header.
+                var length = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan(72));
+                bytes[80 + length - 1] ^= 1;
+                var crc = Crc32.Compute(bytes.AsSpan(80, length), Crc32.Compute(bytes.AsSpan(68, 8)));
+                System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(76), crc);
+            }
+            return new MemoryStream(bytes);
+        }, _ => Task.FromResult<IFrameConnection>(++connections == 1 ? first : new Peer()), TimeSpan.FromSeconds(1), 1));
+        Assert.Equal(2, connections);
+    }
     [Fact] public async Task NoFooterTimesOutAndCancellationDoesNotClaimSuccess()
     {
-        await using var peer = new Peer(); using var source = new MemoryStream(NativeCaptureTests.Recording(footer: false));
+        await using var peer = new Peer(); using var source = new MemoryStream(NativeCaptureCompatibilityTests.Recording(footer: false));
         await Assert.ThrowsAsync<TimeoutException>(() => NativeCaptureRelay.RunAsync(source, peer, TimeSpan.FromMilliseconds(100)));
         using var stop = new CancellationTokenSource(); stop.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => NativeCaptureRelay.RunWithReconnectAsync(
-            () => new MemoryStream(NativeCaptureTests.Recording()), _ => Task.FromResult<IFrameConnection>(new Peer()), TimeSpan.FromSeconds(1), cancellationToken: stop.Token));
+            () => new MemoryStream(NativeCaptureCompatibilityTests.Recording()), _ => Task.FromResult<IFrameConnection>(new Peer()), TimeSpan.FromSeconds(1), cancellationToken: stop.Token));
     }
     [Fact] public async Task LateJoinReceivesNamesOsThreadsAndFooterWithoutInventedGaps()
     {
         var cache = new NativeMetadataCache(); var blocks = new List<TraceBlock>();
-        using var source = new MemoryStream(NativeCaptureTests.Recording());
+        using var source = new MemoryStream(NativeCaptureCompatibilityTests.Recording());
         await NativeTraceFile.ReadAsync(source, b => { blocks.Add(b); cache.Observe(b); return ValueTask.CompletedTask; }, false);
         var store = new TraceStore();
         foreach (var b in cache.MaterializeBefore(100)) store.Add(b);

@@ -34,6 +34,9 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
+      - name: Verify portable late-join frame selection
+        shell: bash
+        run: python native/test_streaming_fixture.py
       - name: Compile native profiler against pinned public SDK
         shell: bash
         run: |
@@ -53,9 +56,8 @@ jobs:
           elif [[ "$RUNNER_OS" == macOS ]]; then LIB="$PWD/artifacts/native-build/libDiagnosticsVisualizerProfiler.dylib";
           else LIB="$PWD/artifacts/native-build/libDiagnosticsVisualizerProfiler.so"; fi
           python native/smoke.py "$LIB"
-      - name: Validate native import, conversion and authenticated late-join relay
-        shell: bash
-        run: python native/validate_streaming.py
+          python native/relay_smoke.py "$LIB"
+          python native/validate_streaming.py
       - name: Stage native redistributable with dependency attribution
         if: success()
         shell: bash
@@ -74,4 +76,6 @@ jobs:
             artifacts/native/*.log
             artifacts/native-package/
             artifacts/native/converted.avtrace
+            artifacts/native-relay/*.json
+            artifacts/native-relay/*.log
           retention-days: 14

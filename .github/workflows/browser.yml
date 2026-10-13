@@ -42,7 +42,9 @@ jobs:
           node tests/browser/smoke.mjs
           node tests/browser/bindings.mjs
           node tests/browser/properties.mjs
+          python3 tests/browser/native-fixture.py
           node tests/browser/native.mjs
+          node tests/browser/native-demo.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
