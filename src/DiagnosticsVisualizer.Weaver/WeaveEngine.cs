@@ -54,6 +54,7 @@ public static class WeaveEngine
                 }
                 var module = assembly.MainModule; var originalMvid = module.Mvid.ToString();
                 var signed = assembly.Name.HasPublicKey; var methodReports = new List<MethodReport>();
+                methodReports.AddRange(GpuTimingRewriter.Instrument(module, directory, resolver));
                 var propertyReports = PropertyOperationRewriter.Instrument(module); methodReports.AddRange(propertyReports);
                 var propertyTokens = propertyReports.Where(r => r.Status == "PropertyOperation").Select(r => r.Token).ToHashSet();
                 var bindingReports = BindingOperationRewriter.Instrument(module); methodReports.AddRange(bindingReports);

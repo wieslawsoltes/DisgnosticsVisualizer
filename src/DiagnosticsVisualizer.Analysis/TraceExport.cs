@@ -31,7 +31,7 @@ public static class TraceExport
         async Task Events(TraceEvent[] events, SnapshotData? snapshot)
         {
             var names = events.Select(e => e.NameId).Distinct().Where(trace.Symbols.ContainsKey).Select(id => new Symbol(id,
-                trace.SourceSites.TryGetValue(id, out var site) ? SourceSiteSymbol.Encode(site) : trace.Symbols[id])).ToArray();
+                trace.SourceSites.TryGetValue(id, out var site) ? SourceSiteSymbol.Encode(site) : trace.GpuSites.TryGetValue(id, out var gpu) ? GpuTimingSymbol.Encode(gpu) : trace.Symbols[id])).ToArray();
             await Write(events, names, Objects(events, snapshot), snapshot).ConfigureAwait(false);
         }
         // Native provenance and selected-but-unexecuted method definitions survive rebatching.
@@ -90,6 +90,19 @@ public static class TraceExport
         using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = false });
         writer.WriteStartObject(); writer.WriteString("displayTimeUnit", "ms");
         writer.WriteString("utcStartTicks", trace.UtcStartTicks.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        writer.WriteStartArray("gpuQueries");
+        foreach (var query in new GpuTimingIndex(trace).Rows)
+        {
+            writer.WriteStartObject(); writer.WriteString("id", query.Id.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            writer.WriteString("context", query.ContextId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            writer.WriteString("status", query.Status); writer.WriteString("clock", "uncalibrated device nanoseconds");
+            writer.WriteString("name", query.Name); writer.WriteString("renderer", query.Renderer);
+            if (query.DeviceStartNs is { } start) writer.WriteString("deviceStartNs", start.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            if (query.DeviceEndNs is { } end) writer.WriteString("deviceEndNs", end.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            if (query.ElapsedNs is { } elapsed) writer.WriteString("elapsedNs", elapsed.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
         writer.WriteStartArray("nativeCapture");
         foreach (var entry in trace.NativeMetadata.Values)
             writer.WriteRawValue(NativeMetadataSymbol.Encode(entry)[NativeMetadataSymbol.Prefix.Length..]);
