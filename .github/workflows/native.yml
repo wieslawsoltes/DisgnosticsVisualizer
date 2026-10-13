@@ -42,6 +42,7 @@ jobs:
         run: |
           cmake -S native -B artifacts/native-build -DCMAKE_BUILD_TYPE=Release -DRUNTIME_SDK_ROOT="$PWD/artifacts/runtime-sdk"
           cmake --build artifacts/native-build --config Release --parallel 2
+          ctest --test-dir artifacts/native-build -C Release --output-on-failure
       - name: Build attach client and unmodified target
         shell: bash
         run: |

@@ -10,6 +10,8 @@ ICorProfilerInfo4::RequestRevert has both an overall HRESULT and one result per 
 
 The runtime contract applies to subsequent calls. An existing invocation finishes the version it entered. Native calli targets and storage remain loaded until process exit so delayed finally callbacks cannot execute unmapped memory. The profiler does not call FreeLibrary/dlclose or claim successful detachment. A reverted method can still have open-at-stop or missing event pairs; those continue to make the capture incomplete. Reversion does not imply that a method executed, restore a previously recompiled caller's inlining decisions, or establish a zero-overhead process state.
 
+The producer-entry and stop/drain counters use a single sequentially consistent admission order; a stop cannot miss a callback that observed recording as enabled. The bounded file reserves space for two complete method-status rounds plus its footer, so a payload-budget stop does not consume the reversion-report allowance. I/O failures still make evidence incomplete.
+
 ## Validation
 
 The cross-platform native fixture keeps executing after its three-second capture window. It checks original generic/ref return, filter/rethrow/finally semantics and unchanged target-file hashes, and now requires every selected method's recorded per-method reversion result to be S_OK. Native file conversion, live/late-join relays and browser imports continue through their existing gates. Unit tests cover v1/v2/v3 compatibility, inconsistent results, unknown states, every byte corruption of a v3 reference and standard binary re-export.
