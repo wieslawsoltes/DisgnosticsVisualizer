@@ -38,10 +38,10 @@ struct Guard {
 #endif
     bool enabled = false;
     Guard() noexcept : recorder(ActiveRecorder()) {
-        if (recorder) { recorder->inFlight.fetch_add(1, std::memory_order_acq_rel); enabled = recorder->accepting.load(std::memory_order_acquire); }
+        if (recorder) { recorder->inFlight.fetch_add(1); enabled = recorder->accepting.load(); }
     }
     ~Guard() {
-        if (recorder) recorder->inFlight.fetch_sub(1, std::memory_order_release);
+        if (recorder) recorder->inFlight.fetch_sub(1);
         errno = error;
 #ifdef _WIN32
         SetLastError(lastError);
@@ -107,7 +107,7 @@ bool Recorder::Open() {
     if (fd<0) return false; file_=fdopen(fd,"wb"); if (!file_) { close(fd); return false; }
 #endif
     std::vector<uint8_t> header{'D','V','N','T','R','C','0','1'};
-    Append32(header,2); Append32(header,0); Append64(header,1000000000); Append64(header,origin); Append64(header,config.utcTicks);
+    Append32(header,3); Append32(header,0); Append64(header,1000000000); Append64(header,origin); Append64(header,config.utcTicks);
     header.insert(header.end(),config.session.begin(),config.session.end());
 #ifdef _WIN32
     Append32(header,GetCurrentProcessId());
@@ -122,8 +122,10 @@ bool Recorder::Write(const void* p,size_t n) noexcept {
     bytes_+=n; return true;
 }
 bool Recorder::Frame(uint32_t kind,const std::vector<uint8_t>& p) noexcept {
-    // The worker is the sole file writer. Retain room for a terminal integrity frame.
-    if (kind!=5 && bytes_+p.size()+12>128ull*1024*1024-1024) { budgetExceeded_=true; accepting.store(false); return false; }
+    // The sole writer reserves two complete method-status rounds plus the footer.
+    // A stop can occur during Scan/Statuses, followed by final reversion statuses.
+    const uint64_t reserve = kind==4 && !accepting.load() ? 1024 : 1024+2ull*SiteLimit*28;
+    if (kind!=5 && bytes_+p.size()+12>128ull*1024*1024-reserve) { budgetExceeded_=true; accepting.store(false); return false; }
     uint8_t header[12]; const uint32_t values[]={kind,uint32_t(p.size()),0};
     for (unsigned n=0;n<3;++n) for (unsigned i=0;i<4;++i) header[n*4+i]=uint8_t(values[n]>>(i*8));
     const auto crc=Crc(p.data(),p.size(),Crc(header,8));
@@ -161,8 +163,8 @@ void Recorder::Drain() noexcept {
     } catch (...) { faults.fetch_add(1); accepting.store(false); }
 }
 void Recorder::Finish(uint32_t reason) noexcept {
-    accepting.store(false,std::memory_order_release);
-    while (inFlight.load(std::memory_order_acquire)!=0) std::this_thread::yield();
+    accepting.store(false);
+    while (inFlight.load()!=0) std::this_thread::yield();
     Drain();
     try {
         uint64_t open=0;

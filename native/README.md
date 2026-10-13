@@ -10,14 +10,14 @@ The added outer finally preserves original generic/byref returns and original ex
 
 Capture stops after a bounded duration (100 ms to one hour). File capacity is 128 MiB, with 64 lifetime thread slots, 4,096 records per per-thread ring, 256 nested selected methods per thread, and 4,096 selected definitions. Overflows are counted, never silent. Method selection and per-method request/instrumentation/compilation results are recorded separately. A successful AttachProfiler call does not prove any selected method compiled or executed. Tail-call/jmp and unsupported/oversized signatures/bodies are explicitly rejected. The sample profile is not a universal overhead guarantee.
 
-The profiler's writer runs on its own CLR-initialized native worker, never in a JIT callback. Hot callbacks avoid managed execution and preserve native last-error state. Native storage and the loaded library remain valid until process exit because already compiled calli sites may outlive capture. Stopping capture is **not** unloading or detaching the profiler; disabled probes retain their branch/call overhead. No other installed profiler is replaced.
+The profiler's writer runs on its own CLR-initialized native worker, never in a JIT callback. Hot callbacks avoid managed execution and preserve native last-error state. Native storage and the loaded library remain valid until process exit because already compiled calli sites may outlive capture. On normal timed/budgeted stop, the v3 recorder attempts RequestRevert for selected active methods after closing rewrite admission. Each result is recorded; only S_OK is reported as reverted. Stopping capture is **not** unloading or detaching the profiler: old active frames retain valid native callback addresses, and caller inliner optimizations are not promised to revert. Shutdown skips the request. No other installed profiler is replaced.
 
 Raw capture import, coverage inspection and the reliable sidecar are implemented below. Native capture currently supplies selected synchronous method lifetimes and metadata, not the managed agent's Avalonia object trees, setter values, asynchronous logical lifetime, GPU timestamps or full custom-scheduler causality. Do not interpret elapsed spans as CPU utilization.
 
-## Shared viewer and reliable sidecar (alpha.14)
+## Shared viewer and reliable sidecar (alpha.15)
 
 Open a `.dvntrace` directly in either application. The reader autodetects native versus
-standard trace framing, validates the v2 header and every frame checksum, enforces size,
+standard trace framing, validates the v2/v3 header and every frame checksum, enforces size,
 identity and record budgets, and retains a missing footer as incomplete evidence in recovery
 mode. Legacy v1 files retain an explicit unchecksummed-header version marker.
 Native process/method/thread/terminal provenance survives standard binary export. Native

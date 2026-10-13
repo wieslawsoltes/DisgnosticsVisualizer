@@ -41,6 +41,8 @@ struct Site {
     std::atomic<bool> active{true};
     std::atomic<int32_t> status{0}, error{0};
     std::atomic<uint32_t> compilations{0};
+    // Reversion results are worker-owned, independent of late compilation callbacks.
+    bool requested=false; int32_t revertStatus=0, revertError=0;
     int32_t writtenStatus=INT32_MIN, writtenError=0; uint32_t writtenCompilations=0;
 };
 struct FunctionSlot { std::atomic<FunctionID> function{0}; std::atomic<uint32_t> site{0}; };
@@ -51,7 +53,13 @@ extern "C" void DVNativeLeave(uint64_t site,uint32_t outcome) noexcept { dv::Lea
 class NativeProfiler final : public Profiler {
     Com<ICorProfilerInfo10> info_;
     dv::Recorder* recorder_=nullptr;
-    std::atomic<bool> stopping_{false}, workerDone_{false};
+    std::atomic<bool> stopping_{false}, workerDone_{false}, rewriteAllowed_{true};
+    std::atomic<uint32_t> activeRewriters_{0};
+    struct RewriteLease {
+        std::atomic<uint32_t>& count;
+        explicit RewriteLease(std::atomic<uint32_t>& value) noexcept : count(value) { count.fetch_add(1); }
+        ~RewriteLease() { count.fetch_sub(1); }
+    };
     std::atomic<uint32_t> count_{0};
     std::array<Site,dv::SiteLimit> sites_{};
     std::array<FunctionSlot,FunctionCapacity> functions_{};
@@ -84,7 +92,10 @@ class NativeProfiler final : public Profiler {
     }
     void Statuses() {
         for(uint32_t i=0;i<count_.load(std::memory_order_acquire);++i) {
-            auto& site=sites_[i];const auto status=site.status.load(),error=site.error.load();const auto compiled=site.compilations.load();
+            auto& site=sites_[i];
+            const auto status=site.revertStatus ? site.revertStatus : site.status.load();
+            const auto error=site.revertStatus ? site.revertError : site.error.load();
+            const auto compiled=site.compilations.load();
             if(status==site.writtenStatus && error==site.writtenError && compiled==site.writtenCompilations)continue;
             std::vector<uint8_t> payload;dv::Append32(payload,i+1);dv::Append32(payload,uint32_t(status));dv::Append32(payload,uint32_t(error));dv::Append32(payload,compiled);
             recorder_->Frame(4,payload);site.writtenStatus=status;site.writtenError=error;site.writtenCompilations=compiled;
@@ -135,6 +146,7 @@ class NativeProfiler final : public Profiler {
             }
         }
         if(!methods.empty() && !stopping_.load()) {
+            for (auto token: methods) if (const auto id=Find(module,token)) sites_[id-1].requested=true;
             recorder_->methodsRequested.fetch_add(methods.size());
             const auto result=info_->RequestReJITWithInliners(COR_PRF_REJIT_BLOCK_INLINING,ULONG(methods.size()),modules.data(),methods.data());
             if(FAILED(result)) {
@@ -153,6 +165,40 @@ class NativeProfiler final : public Profiler {
             scanned_.insert(values[i]);ScanModule(values[i]);
         }
     }
+    // Only the CLR-initialized worker invokes RequestRevert. Never block a runtime
+    // callback waiting for that worker, and never unload calli targets still used by
+    // an already-running invocation of the old instrumented body.
+    void Revert() {
+        // A single sequentially consistent admission order closes the read/increment race.
+        rewriteAllowed_.store(false);
+        const auto deadline = dv::Clock() + 5000000000ull;
+        while (activeRewriters_.load() != 0 && !stopping_.load() && dv::Clock() < deadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        if (stopping_.load()) return; // CLR shutdown is not a safe place to request reversion.
+        std::vector<ModuleID> modules;
+        std::vector<mdMethodDef> methods;
+        std::vector<uint32_t> indices;
+        for (uint32_t i = 0; i < count_.load(std::memory_order_acquire); ++i) {
+            const auto& site = sites_[i];
+            if (site.active.load() && site.requested) {
+                modules.push_back(site.module); methods.push_back(site.token); indices.push_back(i);
+            }
+        }
+        if (methods.empty()) return;
+        // Top-level S_OK only means all requests were attempted. Each method's
+        // HRESULT must independently establish whether original IL was restored.
+        const auto timeout = static_cast<HRESULT>(static_cast<int32_t>(0x800705b4u));
+        std::vector<HRESULT> results(methods.size(), E_FAIL);
+        const auto hr = activeRewriters_.load() != 0 ? timeout :
+            info_->RequestRevert(ULONG(methods.size()), modules.data(), methods.data(), results.data());
+        for (size_t i = 0; i < indices.size(); ++i) {
+            const auto result = FAILED(hr) ? hr : results[i];
+            auto& site = sites_[indices[i]];
+            site.revertError=result;
+            site.revertStatus=result == S_OK ? 3 : -8;
+            if (result != S_OK) recorder_->rejitErrors.fetch_add(1);
+        }
+    }
     void Worker() noexcept {
         try {
             const auto initialized=info_->InitializeCurrentThread();
@@ -164,6 +210,7 @@ class NativeProfiler final : public Profiler {
                 Statuses();recorder_->Drain();std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }
             recorder_->accepting.store(false);
+            if (!stopping_.load()) Revert();
             Statuses();recorder_->Finish(stopping_.load()?1:0);
         } catch(...) {recorder_->faults.fetch_add(1);recorder_->Finish(2);}
         workerDone_.store(true,std::memory_order_release);Release();
@@ -186,7 +233,7 @@ public:
         catch(...) {recorder_->accepting.store(false);recorder_->faults.fetch_add(1);recorder_->Finish(2);Release();return E_FAIL;}
     }
     HRESULT STDMETHODCALLTYPE Shutdown() override {
-        stopping_.store(true);if(recorder_)recorder_->accepting.store(false);
+        stopping_.store(true);rewriteAllowed_.store(false);if(recorder_)recorder_->accepting.store(false);
         // Never join a CLR-API worker while executing a runtime shutdown callback.
         return S_OK;
     }
@@ -196,7 +243,7 @@ public:
     HRESULT STDMETHODCALLTYPE JITCompilationStarted(FunctionID function,BOOL) override {RegisterFunction(function);return S_OK;}
     HRESULT STDMETHODCALLTYPE ReJITCompilationStarted(FunctionID function,ReJITID,BOOL) override {RegisterFunction(function);return S_OK;}
     HRESULT STDMETHODCALLTYPE JITInlining(FunctionID,FunctionID callee,BOOL* inlineMethod) override {
-        if(inlineMethod)*inlineMethod=Function(callee)==0;return S_OK;
+        if(inlineMethod && rewriteAllowed_.load() && Function(callee)!=0)*inlineMethod=FALSE;return S_OK;
     }
     HRESULT STDMETHODCALLTYPE ReJITCompilationFinished(FunctionID function,ReJITID,HRESULT result,BOOL) override {
         if(const auto id=Function(function)) {if(SUCCEEDED(result)){sites_[id-1].compilations.fetch_add(1);recorder_->compilations.fetch_add(1);}else{sites_[id-1].error.store(result);recorder_->rejitErrors.fetch_add(1);}}return S_OK;
@@ -205,7 +252,8 @@ public:
         if(const auto id=Find(module,method)){sites_[id-1].error.store(result);sites_[id-1].status.store(-3);}if(recorder_)recorder_->rejitErrors.fetch_add(1);return S_OK;
     }
     HRESULT STDMETHODCALLTYPE GetReJITParameters(ModuleID module,mdMethodDef method,ICorProfilerFunctionControl* control) override {
-        const auto id=Find(module,method);if(!id || stopping_.load() || !recorder_->accepting.load())return S_OK;
+        RewriteLease lease(activeRewriters_);
+        const auto id=Find(module,method);if(!id || stopping_.load() || !rewriteAllowed_.load() || !recorder_->accepting.load())return S_OK;
         auto& site=sites_[id-1];
         try {
             auto fail=[&](HRESULT hr,int state=-4) {site.error.store(hr);site.status.store(state);return hr;};
