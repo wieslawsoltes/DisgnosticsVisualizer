@@ -7,6 +7,13 @@ using DiagnosticsVisualizer.Transport;
 
 internal static class CaptureCommands
 {
+    private static FileStreamOptions RecoveryOutputOptions()
+    {
+        var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write,
+            Share = FileShare.None, BufferSize = 65536, Options = FileOptions.Asynchronous };
+        if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        return options;
+    }
     public static async Task<int> RunAsync(string[] args)
     {
         using var stop = new CancellationTokenSource();
@@ -40,7 +47,7 @@ internal static class CaptureCommands
                     {
                         TraceReadResult read;
                         await using (var input = Open())
-                        await using (var destination = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 65536, FileOptions.Asynchronous))
+                        await using (var destination = new FileStream(temporary, RecoveryOutputOptions()))
                         {
                             read = await TraceImport.ReadAsync(input, b => TraceFile.WriteAsync(destination, b, stop.Token), args.Length == 4, stop.Token);
                             await destination.FlushAsync(stop.Token);
@@ -54,6 +61,8 @@ internal static class CaptureCommands
                     var endpoint = new Uri(args[2], UriKind.Absolute);
                     var token = Environment.GetEnvironmentVariable("AVTRACE_TOKEN") ?? throw new ArgumentException("Set AVTRACE_TOKEN for collector authentication.");
                     NetworkSecurity.ValidateEndpoint(endpoint, "tcp", "tls"); NetworkSecurity.ValidateToken(token);
+                    if (endpoint.Port is < 1 or > 65535 || endpoint.AbsolutePath is not ("" or "/"))
+                        throw new ArgumentException("Specify a TCP/TLS host and explicit port without a path.");
                     var idle = args.Length >= 4 ? int.Parse(args[3], CultureInfo.InvariantCulture) : 30000;
                     var retries = args.Length == 5 ? int.Parse(args[4], CultureInfo.InvariantCulture) : 3;
                     var result = await NativeCaptureRelay.RunWithReconnectAsync(Open,

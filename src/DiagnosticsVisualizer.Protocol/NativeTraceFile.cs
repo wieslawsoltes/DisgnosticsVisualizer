@@ -176,6 +176,8 @@ public static class TraceImport
     public static async Task<TraceReadResult> ReadAsync(Stream stream, Func<TraceBlock, ValueTask> consume,
         bool recoverTruncatedTail = true, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(stream); ArgumentNullException.ThrowIfNull(consume);
+        if (!stream.CanRead) throw new ArgumentException("A readable input is required.", nameof(stream));
         var prefix = new byte[8]; var read = 0;
         while (read < prefix.Length) { var n = await stream.ReadAsync(prefix.AsMemory(read), cancellationToken).ConfigureAwait(false); if (n == 0) break; read += n; }
         if (read < prefix.Length) throw new InvalidDataException("The recording header is empty or truncated.");

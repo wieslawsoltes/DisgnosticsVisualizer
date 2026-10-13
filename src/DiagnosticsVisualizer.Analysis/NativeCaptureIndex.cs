@@ -42,6 +42,7 @@ public sealed class NativeCaptureIndex
             if (entry) pair.Entry = i; else pair.Exit = i;
             groups[e.Data1] = pair;
         }
+        var nativeEventCount = groups.Values.Sum(p => (p.Entry < 0 ? 0 : 1) + (p.Exit < 0 ? 0 : 1));
         var totals = new Dictionary<int, Totals>();
         foreach (var pair in groups.Values)
         {
@@ -78,7 +79,7 @@ public sealed class NativeCaptureIndex
                 Status(status?.Status), status is { HResult: not 0 } ? $"0x{unchecked((uint)status.HResult):X8}" : "—", status?.Compilations ?? 0,
                 sum.Complete, sum.Unwound, sum.MissingExit, sum.MissingEntry, sum.Ticks * 1000 / trace.Frequency, sum.FirstEvent);
         }).ToArray();
-        Incomplete = Process is null || End is null || !End.HasFooter || End.TruncatedTail || End.Reason is 2 or 3 ||
+        Incomplete = Process is null || End is null || !End.HasFooter || End.TruncatedTail || End.Reason is 2 or 3 || End.Records != nativeEventCount ||
             End.DroppedRecords != 0 || End.RecorderFaults != 0 || End.IoFaults != 0 || End.RejitErrors != 0 || End.OpenFrames != 0 ||
             trace.DroppedEvents != 0 || trace.ProbeFaults != 0 || trace.MetadataDrops != 0 || trace.MissingBlocks != 0 || trace.EvictedEvents != 0 ||
             statuses.Values.Any(s => s.Status < 0) || InvalidGroups != 0 || UnmatchedEntries != 0 || UnmatchedCompletions != 0;

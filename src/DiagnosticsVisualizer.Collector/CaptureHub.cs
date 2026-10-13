@@ -10,6 +10,7 @@ public sealed class CaptureHub(CollectorOptions options, ILogger<CaptureHub> log
 {
     private sealed class Viewer(IFrameConnection connection)
     {
+        public byte[][] Bootstrap = [];
         public readonly Guid Id = Guid.NewGuid();
         public readonly IFrameConnection Connection = connection;
         public readonly FrameQueue Queue = new(64, 16 * 1024 * 1024);
@@ -24,10 +25,10 @@ public sealed class CaptureHub(CollectorOptions options, ILogger<CaptureHub> log
     private readonly Queue<QueuedFrame> _history = new();
     private readonly ConcurrentDictionary<long, Pending> _requests = new();
     private IFrameConnection? _producer;
+    private readonly NativeBootstrapCache _nativeBootstrap = new();
     private Guid _session;
     private long _historyBytes, _requestId, _frames, _archiveBytes;
     private byte[]? _checkpoint;
-    private readonly NativeMetadataCache _nativeMetadata = new();
     private FileStream? _archive;
     private SecureDatagramAssembler? _datagrams;
     private long _udpRejected, _udpExpired, _udpFrames, _snapshotDeltaFrames;
@@ -89,15 +90,11 @@ public sealed class CaptureHub(CollectorOptions options, ILogger<CaptureHub> log
         lock (_gate)
         {
             if (_viewers.Count >= options.MaxViewers) throw new InvalidOperationException("Collector viewer limit reached.");
+            viewer.Bootstrap = _nativeBootstrap.Snapshot();
             _viewers.Add(viewer);
             if (_checkpoint is not null) Enqueue(viewer, _checkpoint, true);
             long copied = 0;
             var tail = _history.Reverse().TakeWhile(frame => (copied += frame.Bytes.Length) <= 8 * 1024 * 1024).Take(48).Reverse().ToArray();
-            if (_nativeMetadata.Active && tail.Length > 0)
-            {
-                var firstSequence = tail.Min(f => TraceCodec.Decode(f.Bytes).Sequence);
-                foreach (var block in _nativeMetadata.MaterializeBefore(firstSequence)) Enqueue(viewer, TraceCodec.Encode(block));
-            }
             foreach (var frame in tail) if (!ReferenceEquals(frame.Bytes, _checkpoint)) Enqueue(viewer, frame.Bytes, frame.Reliable);
             if (_producer is null) Enqueue(viewer, CommandCodec.Encode(new(0, CommandKind.Response, 0, "NO_SOURCE")));
         }
@@ -115,6 +112,8 @@ public sealed class CaptureHub(CollectorOptions options, ILogger<CaptureHub> log
     }
     private static async Task SendViewerAsync(Viewer viewer, CancellationToken cancellationToken)
     {
+        foreach (var frame in viewer.Bootstrap) await viewer.Connection.SendAsync(frame, cancellationToken).ConfigureAwait(false);
+        viewer.Bootstrap = [];
         var encoder = new TraceStreamEncoder();
         await foreach (var packet in viewer.Queue.ReadPacketsAsync(cancellationToken).ConfigureAwait(false))
         {
@@ -171,7 +170,6 @@ public sealed class CaptureHub(CollectorOptions options, ILogger<CaptureHub> log
                 if (_session != block.SessionId)
                 {
                     newSession = true;
-                    _nativeMetadata.Reset();
                     if (_session != Guid.Empty)
                         foreach (var viewer in _viewers) { viewer.Queue.Complete(new IOException("Source session changed. Reconnect to start a new recording.")); viewer.Stop.Cancel(); }
                     _session = block.SessionId; _history.Clear(); _historyBytes = 0; _checkpoint = null;
@@ -180,7 +178,7 @@ public sealed class CaptureHub(CollectorOptions options, ILogger<CaptureHub> log
                     try { _datagrams = new(_session, key); }
                     finally { System.Security.Cryptography.CryptographicOperations.ZeroMemory(key); }
                 }
-                _nativeMetadata.Observe(block);
+                _nativeBootstrap.Observe(block, frame);
                 if (block.Snapshot is not null) _checkpoint = frame;
                 _history.Enqueue(new(frame, block.Snapshot is not null)); _historyBytes += frame.Length;
                 while (_historyBytes > 32 * 1024 * 1024 || _history.Count > 2048) _historyBytes -= _history.Dequeue().Bytes.Length;

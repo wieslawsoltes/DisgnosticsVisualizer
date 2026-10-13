@@ -14,8 +14,8 @@ public sealed record NativeRelayResult(TraceReadResult Capture, int Connections,
 public static class NativeCaptureRelay
 {
     public static Task<TraceReadResult> RunAsync(Stream source, IFrameConnection destination,
-        TimeSpan idleTimeout, CancellationToken cancellationToken = default) =>
-        RunCoreAsync(source, destination, idleTimeout, null, cancellationToken);
+        TimeSpan idleTimeout, CancellationToken cancellationToken = default, bool follow = true) =>
+        RunCoreAsync(source, destination, idleTimeout, null, cancellationToken, follow);
 
     /// <summary>Owns and disposes each returned stream/connection. Never reattaches a profiler on reconnect.</summary>
     public static async Task<NativeRelayResult> RunWithReconnectAsync(Func<Stream> openSource,
@@ -26,7 +26,7 @@ public static class NativeCaptureRelay
         if (maximumReconnects is < 0 or > 10) throw new ArgumentOutOfRangeException(nameof(maximumReconnects));
         if (idleTimeout < TimeSpan.FromMilliseconds(100) || idleTimeout > TimeSpan.FromHours(1)) throw new ArgumentOutOfRangeException(nameof(idleTimeout));
         (Guid Session, long Frequency, long Origin, long Utc)? identity = null;
-        var connections = 0;
+        var connections = 0; var digests = new List<byte[]>();
         for (var attempt = 0; ; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -34,14 +34,16 @@ public static class NativeCaptureRelay
             {
                 await using var destination = await connect(cancellationToken).ConfigureAwait(false);
                 connections++;
+                await using var verified = new NativeRelayClient.ReplayGuard(destination, digests, 131072, _ => { });
                 await using var source = openSource();
                 if (source.CanSeek && source.Position != 0) throw new ArgumentException("Replay requires a stream positioned at its header.");
-                var result = await RunCoreAsync(source, destination, idleTimeout, block =>
+                var result = await RunCoreAsync(source, verified, idleTimeout, block =>
                 {
                     var current = (block.SessionId, block.Frequency, block.OriginTimestamp, block.UtcStartTicks);
                     identity ??= current;
                     if (identity.Value != current) throw new InvalidDataException("Native source identity changed during reconnect.");
                 }, cancellationToken).ConfigureAwait(false);
+                if (verified.Frames < digests.Count) throw new InvalidDataException("Native replay ended before its previously observed prefix.");
                 return new(result, connections, attempt);
             }
             catch (Exception e) when (!cancellationToken.IsCancellationRequested && attempt < maximumReconnects && e is IOException or SocketException)
@@ -52,16 +54,15 @@ public static class NativeCaptureRelay
         }
     }
     private static async Task<TraceReadResult> RunCoreAsync(Stream source, IFrameConnection destination,
-        TimeSpan idleTimeout, Action<TraceBlock>? inspect, CancellationToken cancellationToken)
+        TimeSpan idleTimeout, Action<TraceBlock>? inspect, CancellationToken cancellationToken, bool follow = true)
     {
         ArgumentNullException.ThrowIfNull(source); ArgumentNullException.ThrowIfNull(destination);
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var replies = ReplyAsync(destination, stop.Token);
-        var read = NativeTraceFile.FollowAsync(source, block =>
-        {
-            inspect?.Invoke(block);
-            return destination.SendAsync(TraceCodec.Encode(block), stop.Token);
-        }, idleTimeout, stop.Token);
+        ValueTask Send(TraceBlock block)
+        { inspect?.Invoke(block); return destination.SendAsync(TraceCodec.Encode(block), stop.Token); }
+        var read = follow ? NativeTraceFile.FollowAsync(source, Send, idleTimeout, stop.Token)
+            : NativeTraceFile.ReadAsync(source, Send, false, stop.Token);
         try
         {
             var completed = await Task.WhenAny(read, replies).ConfigureAwait(false);

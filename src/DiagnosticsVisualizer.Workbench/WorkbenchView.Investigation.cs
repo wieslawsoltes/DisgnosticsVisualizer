@@ -17,20 +17,24 @@ public sealed partial class WorkbenchView
     public void ShowStyleEvaluations() => _factory.Activate("styling");
     private readonly ResourceLookupsControl _resourceLookups = new();
     public void ShowResourceLookups() => _factory.Activate("resources");
-    private readonly NativeCaptureControl _nativeCapture = new();
-    public void ShowNativeCapture() => _factory.Activate("native");
     private readonly DispatcherOperationsControl _dispatcher = new();
     private readonly XamlOriginsControl _xaml = new();
     private XamlSourceIndex? _xamlIndex;
+    private readonly NativeCaptureControl _nativeCapture = new();
+    public void ShowNativeCapture() => _factory.Activate("native");
     public void ShowDispatcher() => _factory.Activate("dispatcher");
     public void ShowXamlOrigins() => _factory.Activate("xaml");
     private void InitializeInvestigation()
     {
-        _factory.RegisterDocument("native", "Native CLR", _nativeCapture);
         _commands.Add(("Open synthetic native example", "", () => { _model.LoadNativeDemo(); ApplyWorkspacePreset(WorkspacePreset.Native); return Task.CompletedTask; }));
         _commands.Add(("Show Native CLR capture", "", () => { ShowNativeCapture(); return Task.CompletedTask; }));
+        _commands.Add(("Show Native CLR", "", () => { ShowNativeCapture(); return Task.CompletedTask; }));
         _nativeCapture.EventSelected += id => _model.SelectEvent(id, false);
-        _nativeCapture.SourceRequested += id => { _model.SelectEvent(id, false); ShowSources(); };
+        _nativeCapture.DefinitionSourceRequested += id =>
+        {
+            if (_model.Trace is not { } trace) return;
+            ShowSources(); _sources.InspectSite(trace, id);
+        };
         _factory.RegisterDocument("property-history", "Property history", _propertyHistory);
         _commands.Add(("Show Property history", "", () => { ShowPropertyHistory(); _propertyHistory.ShowHistory(); return Task.CompletedTask; }));
         _propertyHistory.EventSelected += id => _model.SelectEvent(id, false);

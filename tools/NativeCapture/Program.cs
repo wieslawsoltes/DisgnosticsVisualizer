@@ -3,8 +3,17 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Diagnostics.NETCore.Client;
 
-if (args.Length > 0 && args[0] is "inspect" or "convert" or "relay")
+if (args.Length == 1 && args[0] is "--help" or "help")
+{
+    Console.WriteLine("NativeCapture inspect <file> | list | attach <pid> <profiler> <new-capture> <duration-ms> <Assembly!Type::Method> [...] | convert <native-file> <new-avtrace-file> [--recover] | relay <native-file> <tcp-or-tls-endpoint> [--follow] [--attempts 3] [--idle-ms 30000]");
+    Console.WriteLine("Relay credentials: AVTRACE_TOKEN. Ctrl+C cancels the sidecar, not the target profiler."); return 0;
+}
+
+if (args.Length > 0 && (args[0] == "inspect" || args[0] == "convert" && args.Length == 4 ||
+    args[0] == "relay" && args.Length > 3 && !args[3].StartsWith("--", StringComparison.Ordinal)))
     return await CaptureCommands.RunAsync(args);
+if (args.Length > 0 && args[0] is "convert" or "relay")
+    return await NativeCaptureCommands.RunAsync(args);
 
 if (args.Length == 1 && args[0] == "list")
 {
@@ -12,7 +21,7 @@ if (args.Length == 1 && args[0] == "list")
 }
 if (args.Length < 6 || args[0] != "attach")
 {
-    Console.Error.WriteLine("NativeCapture inspect <file> | convert <file> <new-output> | relay <file> <tcp/tls-url> [idle-ms] [retries] | list | attach <pid> <profiler-path> <new-capture-path> <duration-ms> <Assembly!Type::Method> [more selectors]"); return 2;
+    Console.Error.WriteLine("NativeCapture inspect <file> | list | attach <pid> <profiler-path> <new-capture-path> <duration-ms> <Assembly!Type::Method> [more selectors]"); return 2;
 }
 try
 {

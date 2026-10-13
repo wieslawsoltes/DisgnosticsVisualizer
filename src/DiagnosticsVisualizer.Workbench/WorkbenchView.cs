@@ -74,7 +74,7 @@ public sealed partial class WorkbenchView : UserControl, IDisposable
         _category.ItemsSource = new[] { "All subsystems" }.Concat(Enum.GetNames<Subsystem>()).ToArray(); _category.SelectedIndex = 0;
         var views = new Dictionary<string, Control>
         {
-            ["timeline"] = ChartPanel(_timeline, _timeline.Fit), ["flame"] = ChartPanel(_flame, _flame.Fit),
+            ["native"] = _nativeCapture, ["timeline"] = ChartPanel(_timeline, _timeline.Fit), ["flame"] = ChartPanel(_flame, _flame.Fit),
             ["causality"] = ChartPanel(_causal, _causal.Fit), ["systems"] = new ScrollViewer { Content = _systems },
             ["comparison"] = ComparisonPanel(), ["visual"] = TreePanel(_visual), ["logical"] = TreePanel(_logical),
             ["routed"] = _routed, ["styling"] = _styleEvaluations, ["resources"] = _resourceLookups, ["dispatcher"] = _dispatcher, ["xaml"] = _xaml, ["dependencies"] = _dependencies, ["async"] = _asyncOperations, ["sources"] = _sources, ["properties"] = _properties, ["details"] = _details, ["events"] = EventPanel(),

@@ -23,7 +23,7 @@ public static class TraceExport
             await TraceFile.WriteAsync(stream, new TraceBlock
             {
                 SessionId = session, Sequence = ++sequence, Frequency = trace.Frequency,
-                UtcStartTicks = trace.UtcStartTicks, OriginTimestamp = trace.OriginTimestamp, DroppedEvents = trace.DroppedEvents,
+                OriginTimestamp = trace.OriginTimestamp, UtcStartTicks = trace.UtcStartTicks, DroppedEvents = trace.DroppedEvents,
                 ProbeFaults = trace.ProbeFaults, MetadataDrops = trace.MetadataDrops, Recording = false,
                 Symbols = symbols, Objects = objects, Events = events, Snapshot = snapshot
             }, cancellationToken).ConfigureAwait(false);
@@ -34,23 +34,29 @@ public static class TraceExport
                 trace.SourceSites.TryGetValue(id, out var site) ? SourceSiteSymbol.Encode(site) : trace.Symbols[id])).ToArray();
             await Write(events, names, Objects(events, snapshot), snapshot).ConfigureAwait(false);
         }
-        var usedNames = trace.Symbols.Keys.Concat(trace.SourceSites.Keys).Concat(trace.Events.Select(e => e.NameId)).ToHashSet();
-        var reserved = int.MaxValue;
-        int Reserve()
+        // Native provenance and selected-but-unexecuted method definitions survive rebatching.
+        // Allocate metadata IDs outside all recorded event/site identities, including the loss symbol.
+        var reserved = trace.Symbols.Keys.Concat(trace.SourceSites.Keys).Concat(trace.Events.Select(e => e.NameId)).ToHashSet();
+        var nextMetadata = int.MaxValue;
+        int AllocateMetadata()
         {
-            while (usedNames.Contains(reserved) && reserved > 0) reserved--;
-            if (reserved <= 0) throw new InvalidDataException("No unused provenance identity.");
-            return reserved--;
+            while (nextMetadata > 0 && !reserved.Add(nextMetadata)) nextMetadata--;
+            if (nextMetadata <= 0) throw new InvalidDataException("No unused metadata symbol identity.");
+            return nextMetadata--;
         }
-        foreach (var group in trace.NativeMetadata.Values.OrderBy(m => m.Kind).ThenBy(m => m.Key).Chunk(256))
-            await Write([], group.Select(m => new Symbol(Reserve(), NativeMetadataSymbol.Encode(m))).ToArray(), [], null).ConfigureAwait(false);
         if (trace.NativeMetadata.Count != 0)
-            foreach (var sites in trace.SourceSites.Select(p => new Symbol(p.Key, SourceSiteSymbol.Encode(p.Value))).Chunk(256))
+        {
+            foreach (var entries in trace.NativeMetadata.OrderBy(p => p.Key.Kind).ThenBy(p => p.Key.Key)
+                .Select(p => new Symbol(AllocateMetadata(), NativeMetadataSymbol.Encode(p.Value))).Chunk(256))
+                await Write([], entries, [], null).ConfigureAwait(false);
+            foreach (var sites in trace.SourceSites.OrderBy(p => p.Key).Select(p => new Symbol(p.Key, SourceSiteSymbol.Encode(p.Value))).Chunk(256))
                 await Write([], sites, [], null).ConfigureAwait(false);
+        }
         // Preserve original gap/eviction provenance instead of inventing target events.
         if (trace.MissingBlocks != 0 || trace.EvictedEvents != 0)
         {
-            var id = Reserve();
+            var id = AllocateMetadata();
+            if (id <= 0) throw new InvalidDataException("No unused symbol identity for capture provenance.");
             await Write([], [new(id, TraceIntegritySymbol.Encode(new(trace.MissingBlocks, trace.EvictedEvents)))], [], null).ConfigureAwait(false);
         }
         // Rebatch by end watermark, retaining original identities and every retained checkpoint.
@@ -82,13 +88,17 @@ public static class TraceExport
     public static async Task WriteChromeJsonAsync(Stream stream, TraceView trace, CancellationToken cancellationToken = default)
     {
         using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = false });
-        writer.WriteStartObject(); writer.WriteString("displayTimeUnit", "ms"); writer.WriteStartArray("traceEvents");
+        writer.WriteStartObject(); writer.WriteString("displayTimeUnit", "ms");
+        writer.WriteString("utcStartTicks", trace.UtcStartTicks.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        writer.WriteStartArray("nativeCapture");
+        foreach (var entry in trace.NativeMetadata.Values)
+            writer.WriteRawValue(NativeMetadataSymbol.Encode(entry)[NativeMetadataSymbol.Prefix.Length..]);
+        writer.WriteEndArray(); writer.WriteStartArray("traceEvents");
         foreach (var thread in trace.Events.Select(e => e.ThreadId).Distinct())
         {
             writer.WriteStartObject(); writer.WriteString("name", "thread_name"); writer.WriteString("ph", "M");
             writer.WriteNumber("pid", 1); writer.WriteNumber("tid", thread); writer.WriteStartObject("args");
-            var os = trace.NativeMetadata.GetValueOrDefault((2, thread)) as NativeThreadInfo;
-            writer.WriteString("name", trace.NativeMetadata.Count == 0 ? $"Managed thread {thread}" : os is null ? $"Native recorder slot {thread} (OS identity unavailable)" : $"OS thread {os.OsThreadId} (recorder slot {thread})"); writer.WriteEndObject(); writer.WriteEndObject();
+            writer.WriteString("name", trace.NativeMetadata.TryGetValue((2, thread), out var nativeThread) && nativeThread is NativeThreadInfo t ? $"OS thread {t.OsThreadId} (native slot {thread})" : $"Managed thread {thread}"); writer.WriteEndObject(); writer.WriteEndObject();
         }
         var propertyOperations = new PropertyOperationIndex(trace); var resourceLookups = new ResourceLookupIndex(trace); var styles = new StyleEvaluationIndex(trace); var bindings = new BindingOperationIndex(trace);
         var count = 0;
@@ -104,11 +114,10 @@ public static class TraceExport
             if (e.Kind == TraceEventKind.Span) writer.WriteNumber("dur", e.Duration * 1_000_000d / trace.Frequency); else if (!asyncStart && !asyncEnd) writer.WriteString("s", "t");
             writer.WriteStartObject("args"); writer.WriteString("eventId", e.Id.ToString());
             writer.WriteString("parentId", e.ParentId.ToString()); writer.WriteString("objectId", e.ObjectId.ToString()); writer.WriteString("relatedObjectId", e.RelatedId.ToString());
-            if (NativeMethodEvent.IsValid(e))
+            if (NativeMethodEvent.IsEvent(e))
             {
                 writer.WriteString("nativeOutcome", NativeMethodEvent.Outcome(e));
-                writer.WriteString("nativeInvocation", e.Data1.ToString(System.Globalization.CultureInfo.InvariantCulture));
-                writer.WriteString("measurement", "Selected method elapsed lifetime; includes waits, not CPU utilization or GPU time");
+                writer.WriteString("nativeCookie", e.Data1.ToString());
             }
             if (asyncStart || asyncEnd) writer.WriteString("measurement", "Async state-machine lifetime, including suspension; not CPU time");
             if (asyncEnd) writer.WriteString("outcome", ((AsyncOperationOutcome)e.Data1).ToString());
