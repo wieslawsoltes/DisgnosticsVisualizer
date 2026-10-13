@@ -1,4 +1,5 @@
 // Copyright (c) Wiesław Šoltés. MIT licensed.
+#include <cassert>
 #include "signature.h"
 // Uses the pinned .NET Foundation profiling SDK and its MIT-licensed no-op callback base/IL list rewriter.
 #include "capture.h"
@@ -287,7 +288,7 @@ public:
 };
 }
 #ifdef _WIN32
-#define DV_EXPORT __declspec(dllexport)
+#define DV_EXPORT // Export COM entry points through the module definition, matching the Windows SDK declarations.
 #else
 #define DV_EXPORT __attribute__((visibility("default")))
 #endif

@@ -7,6 +7,9 @@
 #include <stdexcept>
 #include <thread>
 #ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 #include <io.h>
 #include <fcntl.h>
@@ -104,14 +107,15 @@ bool Recorder::Open() {
     if (fd<0) return false; file_=fdopen(fd,"wb"); if (!file_) { close(fd); return false; }
 #endif
     std::vector<uint8_t> header{'D','V','N','T','R','C','0','1'};
-    Append32(header,1); Append32(header,0); Append64(header,1000000000); Append64(header,origin); Append64(header,config.utcTicks);
+    Append32(header,2); Append32(header,0); Append64(header,1000000000); Append64(header,origin); Append64(header,config.utcTicks);
     header.insert(header.end(),config.session.begin(),config.session.end());
 #ifdef _WIN32
     Append32(header,GetCurrentProcessId());
 #else
     Append32(header,uint32_t(getpid()));
 #endif
-    Append32(header,uint32_t(sizeof(void*))); return Write(header.data(),header.size());
+    Append32(header,uint32_t(sizeof(void*))); Append32(header,Crc(header.data(),header.size()));
+    return Write(header.data(),header.size());
 }
 bool Recorder::Write(const void* p,size_t n) noexcept {
     if (!file_ || fwrite(p,1,n,file_)!=n) { ioFaults.fetch_add(1); accepting.store(false); return false; }

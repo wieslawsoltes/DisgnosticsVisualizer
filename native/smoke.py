@@ -39,7 +39,9 @@ assert hashes=={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in paths
 lines=(output/'target.log').read_text().splitlines();results=[json.loads(line) for line in lines if line.startswith('{')]
 assert results and results[-1]['iterations']==results[-1]['finallyCount'] and results[-1]['iterations']>10000,results
 b=capture.read_bytes();assert b[:8]==b'DVNTRC01' and len(b)<=128*1024*1024
-position=64;methods={};status={};threads={};events=[];footer=None
+assert struct.unpack_from("<II",b,8)==(2,0)
+assert zlib.crc32(b[:64])==struct.unpack_from("<I",b,64)[0]
+position=68;methods={};status={};threads={};events=[];footer=None
 while position<len(b):
     kind,length,crc=struct.unpack_from('<III',b,position);header=b[position:position+8];position+=12
     assert length<=65536 and position+length<=len(b)
