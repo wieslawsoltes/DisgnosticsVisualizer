@@ -1,5 +1,6 @@
 """Deterministic native pause boundaries, capability isolation, stop/revert and untouched application outputs."""
 from pathlib import Path
+from terminal_fixture import wait_for_terminal
 import os, sys, subprocess, json, socket, struct, time, uuid, zlib, hashlib, threading, queue, urllib.request
 root = Path(__file__).resolve().parent.parent
 out = root / 'artifacts/native-control'; out.mkdir(parents=True, exist_ok=True)
@@ -76,6 +77,9 @@ try:
         for handle in logs: handle.close()
     assert call('status')['State']==0, 'Canceling the sidecar changed native recording state'
     stopped = call('revert'); assert stopped['State']==3 and stopped['Methods']==3 and stopped['FailedMethods']==0,stopped
+    # Revert acknowledgement establishes original-IL results, not recorder finalization.
+    # Keep the target alive until the asynchronous worker has emitted a complete footer.
+    wait_for_terminal(capture)
     workload('run','RUN_OK'); workload('quit','CONTROL_WORKLOAD_OK'); p.wait(10); assert p.returncode==0
 finally:
     if p.poll() is None: p.kill(); p.wait()

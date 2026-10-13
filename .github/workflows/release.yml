@@ -42,6 +42,12 @@ jobs:
       - run: bash eng/integration.sh "$VERSION"
         env:
           VERSION: ${{ steps.version.outputs.value }}
+      - name: Validate packaged GPU timestamp backend before publication
+        run: |
+          sudo apt-get update && sudo apt-get install -y libegl1-mesa-dev libgl1-mesa-dri
+          bash eng/gpu-integration.sh "$VERSION"
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
       - uses: actions/upload-artifact@v4
         with:
           name: release-packages
@@ -54,6 +60,8 @@ jobs:
           path: |
             artifacts/integration/*report.json
             artifacts/integration/workload.log
+            artifacts/gpu/*report.json
+            artifacts/gpu/*.log
   publish:
     needs: validate
     runs-on: ubuntu-latest
