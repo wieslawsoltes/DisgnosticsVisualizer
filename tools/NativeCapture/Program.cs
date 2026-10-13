@@ -3,13 +3,16 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Diagnostics.NETCore.Client;
 
+if (args.Length > 0 && args[0] is "inspect" or "convert" or "relay")
+    return await CaptureCommands.RunAsync(args);
+
 if (args.Length == 1 && args[0] == "list")
 {
     Console.WriteLine(JsonSerializer.Serialize(DiagnosticsClient.GetPublishedProcesses().Order())); return 0;
 }
 if (args.Length < 6 || args[0] != "attach")
 {
-    Console.Error.WriteLine("NativeCapture list | attach <pid> <profiler-path> <new-capture-path> <duration-ms> <Assembly!Type::Method> [more selectors]"); return 2;
+    Console.Error.WriteLine("NativeCapture inspect <file> | convert <file> <new-output> | relay <file> <tcp/tls-url> [idle-ms] [retries] | list | attach <pid> <profiler-path> <new-capture-path> <duration-ms> <Assembly!Type::Method> [more selectors]"); return 2;
 }
 try
 {

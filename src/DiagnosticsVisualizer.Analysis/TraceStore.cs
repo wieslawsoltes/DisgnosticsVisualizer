@@ -11,7 +11,10 @@ public sealed record TraceView(Guid SessionId, long Frequency, long OriginTimest
     long DroppedEvents, long MissingBlocks, long ProbeFaults, long MetadataDrops,
     long EvictedEvents, bool Recording)
 {
+    public long UtcStartTicks { get; init; }
     public IReadOnlyDictionary<int, SourceSite> SourceSites { get; init; } = new Dictionary<int, SourceSite>();
+    public IReadOnlyDictionary<(int Kind, int Key), NativeMetadata> NativeMetadata { get; init; } =
+        new ReadOnlyDictionary<(int, int), NativeMetadata>(new Dictionary<(int, int), NativeMetadata>());
     public SnapshotCheckpoint[] Checkpoints { get; init; } = [];
     public string Name(in TraceEvent e) => Symbols.TryGetValue(e.NameId, out var name) ? name : $"site #{e.NameId}";
     public double Milliseconds(long ticks) => ticks * (1000d / Frequency);
@@ -26,12 +29,15 @@ public sealed class TraceStore
     private readonly Dictionary<int, string> _symbols = [], _displaySymbols = [];
     private readonly Dictionary<int, SourceSite> _sourceSites = [];
     private readonly HashSet<int> _integritySymbols = [];
+    private readonly Dictionary<(int, int), NativeMetadata> _nativeMetadata = [];
+    private readonly Dictionary<(int, int), long> _nativeSequences = [];
+    private IReadOnlyDictionary<(int, int), NativeMetadata>? _publishedNative;
     private readonly Dictionary<long, ObjectInfo> _objects = [];
     private IReadOnlyDictionary<int, string>? _publishedSymbols;
     private IReadOnlyDictionary<int, SourceSite>? _publishedSites;
     private IReadOnlyDictionary<long, ObjectInfo>? _publishedObjects;
     private Guid _session;
-    private long _frequency = 10_000_000, _origin, _drops, _faults, _metadataDrops;
+    private long _frequency = 10_000_000, _origin, _utc, _drops, _faults, _metadataDrops;
     private long _inheritedMissing, _inheritedEvicted;
     private SnapshotData _snapshot = SnapshotData.Empty;
     private long _snapshotSequence;
@@ -59,18 +65,34 @@ public sealed class TraceStore
             foreach (var symbol in provenance)
                 if (!TraceIntegritySymbol.TryDecode(symbol.Name, out _) || block.Events.Length != 0 || block.Snapshot is not null)
                     throw new InvalidDataException("Invalid capture integrity metadata frame.");
+            var native = new Dictionary<int, NativeMetadata>();
+            foreach (var symbol in block.Symbols.Where(s => s.Name.StartsWith(NativeMetadataSymbol.Prefix, StringComparison.Ordinal)))
+            {
+                if (!NativeMetadataSymbol.TryDecode(symbol.Name, out var metadata) || block.Events.Length != 0 || block.Snapshot is not null ||
+                    !native.TryAdd(symbol.Id, metadata!))
+                    throw new InvalidDataException("Invalid native provenance frame.");
+            }
+            var nativeKeys = native.Values.Select(m => (m.Kind, m.Key)).ToArray();
+            if (nativeKeys.Distinct().Count() != nativeKeys.Length ||
+                _nativeMetadata.Count + nativeKeys.Count(k => !_nativeMetadata.ContainsKey(k)) > NativeMetadataSymbol.MaximumEntries)
+                throw new InvalidDataException("Duplicate or excessive native provenance identities.");
+            foreach (var metadata in native.Values)
+                if (metadata is NativeProcessInfo && _nativeMetadata.TryGetValue((1, 0), out var process) && process != metadata ||
+                    metadata is NativeThreadInfo thread && _nativeMetadata.TryGetValue((2, thread.Slot), out var previousThread) && previousThread != metadata)
+                    throw new InvalidDataException("Native process or thread identity changed.");
             foreach (var symbol in block.Symbols)
                 if (_symbols.TryGetValue(symbol.Id, out var oldName) && oldName != symbol.Name)
                     throw new InvalidDataException("Symbol identity collision.");
             if (_integritySymbols.Count > 0 && block.Events.Any(e => _integritySymbols.Contains(e.NameId)))
                 throw new InvalidDataException("An event cannot refer to reserved capture integrity metadata.");
-            if (provenance.Length > 0)
+            if (provenance.Length > 0 || native.Count > 0)
             {
                 var identities = block.Symbols.Select(s => s.Id).ToHashSet();
                 if (identities.Count != block.Symbols.Length || _symbols.Count + identities.Count(id => !_symbols.ContainsKey(id)) > 1_000_000)
                     throw new InvalidDataException("Duplicate or unretainable capture integrity metadata.");
             }
             if (!_sequences.TryAccept(block.Sequence)) return;
+            if (_session == Guid.Empty) _utc = block.UtcStartTicks;
             _session = block.SessionId; _frequency = block.Frequency; _origin = block.OriginTimestamp;
             foreach (var s in block.Symbols)
             {
@@ -82,6 +104,15 @@ public sealed class TraceStore
                     {
                         _sourceSites[s.Id] = site!; _displaySymbols[s.Id] = site!.Signature;
                         _publishedSites = null; _publishedSymbols = null;
+                    }
+                    else if (native.TryGetValue(s.Id, out var nativeValue))
+                    {
+                        _integritySymbols.Add(s.Id);
+                        var key = (nativeValue.Kind, nativeValue.Key);
+                        if (!_nativeSequences.TryGetValue(key, out var previousSequence) || block.Sequence > previousSequence)
+                        {
+                            _nativeMetadata[key] = nativeValue; _nativeSequences[key] = block.Sequence; _publishedNative = null;
+                        }
                     }
                     else if (TraceIntegritySymbol.TryDecode(s.Name, out var integrity))
                     {
@@ -126,7 +157,7 @@ public sealed class TraceStore
             return new(_session, _frequency, _origin, events,
                 _publishedSymbols ??= new ReadOnlyDictionary<int, string>(new Dictionary<int, string>(_displaySymbols)),
                 _publishedObjects ??= new ReadOnlyDictionary<long, ObjectInfo>(new Dictionary<long, ObjectInfo>(_objects)), _snapshot, _drops, TraceIntegritySymbol.SaturatingAdd(missing, _inheritedMissing), _faults,
-                _metadataDrops, TraceIntegritySymbol.SaturatingAdd(_events.Evicted, _inheritedEvicted), _recording) { Checkpoints = _checkpoints.ToArray(), SourceSites = _publishedSites ??= new ReadOnlyDictionary<int, SourceSite>(new Dictionary<int, SourceSite>(_sourceSites)) };
+                _metadataDrops, TraceIntegritySymbol.SaturatingAdd(_events.Evicted, _inheritedEvicted), _recording) { UtcStartTicks = _utc, NativeMetadata = _publishedNative ??= new ReadOnlyDictionary<(int, int), NativeMetadata>(new Dictionary<(int, int), NativeMetadata>(_nativeMetadata)), Checkpoints = _checkpoints.ToArray(), SourceSites = _publishedSites ??= new ReadOnlyDictionary<int, SourceSite>(new Dictionary<int, SourceSite>(_sourceSites)) };
         }
     }
 }

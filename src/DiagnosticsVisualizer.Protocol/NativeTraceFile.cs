@@ -140,6 +140,8 @@ public static class NativeTraceFile
         while (read < buffer.Length)
         {
             ct.ThrowIfCancellationRequested();
+            if (stream.CanSeek && (stream.Length < stream.Position || stream.Length > MaximumFileBytes))
+                throw new InvalidDataException("Native capture was truncated or exceeded its file budget.");
             var n = await stream.ReadAsync(buffer[read..], ct).ConfigureAwait(false);
             if (n > 0) { read += n; progress = Stopwatch.GetTimestamp(); continue; }
             if (idleTimeout is null) break;

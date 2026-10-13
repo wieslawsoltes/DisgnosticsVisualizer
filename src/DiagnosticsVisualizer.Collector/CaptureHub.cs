@@ -27,6 +27,7 @@ public sealed class CaptureHub(CollectorOptions options, ILogger<CaptureHub> log
     private Guid _session;
     private long _historyBytes, _requestId, _frames, _archiveBytes;
     private byte[]? _checkpoint;
+    private readonly NativeMetadataCache _nativeMetadata = new();
     private FileStream? _archive;
     private SecureDatagramAssembler? _datagrams;
     private long _udpRejected, _udpExpired, _udpFrames, _snapshotDeltaFrames;
@@ -92,6 +93,11 @@ public sealed class CaptureHub(CollectorOptions options, ILogger<CaptureHub> log
             if (_checkpoint is not null) Enqueue(viewer, _checkpoint, true);
             long copied = 0;
             var tail = _history.Reverse().TakeWhile(frame => (copied += frame.Bytes.Length) <= 8 * 1024 * 1024).Take(48).Reverse().ToArray();
+            if (_nativeMetadata.Active && tail.Length > 0)
+            {
+                var firstSequence = tail.Min(f => TraceCodec.Decode(f.Bytes).Sequence);
+                foreach (var block in _nativeMetadata.MaterializeBefore(firstSequence)) Enqueue(viewer, TraceCodec.Encode(block));
+            }
             foreach (var frame in tail) if (!ReferenceEquals(frame.Bytes, _checkpoint)) Enqueue(viewer, frame.Bytes, frame.Reliable);
             if (_producer is null) Enqueue(viewer, CommandCodec.Encode(new(0, CommandKind.Response, 0, "NO_SOURCE")));
         }
@@ -165,6 +171,7 @@ public sealed class CaptureHub(CollectorOptions options, ILogger<CaptureHub> log
                 if (_session != block.SessionId)
                 {
                     newSession = true;
+                    _nativeMetadata.Reset();
                     if (_session != Guid.Empty)
                         foreach (var viewer in _viewers) { viewer.Queue.Complete(new IOException("Source session changed. Reconnect to start a new recording.")); viewer.Stop.Cancel(); }
                     _session = block.SessionId; _history.Clear(); _historyBytes = 0; _checkpoint = null;
@@ -173,6 +180,7 @@ public sealed class CaptureHub(CollectorOptions options, ILogger<CaptureHub> log
                     try { _datagrams = new(_session, key); }
                     finally { System.Security.Cryptography.CryptographicOperations.ZeroMemory(key); }
                 }
+                _nativeMetadata.Observe(block);
                 if (block.Snapshot is not null) _checkpoint = frame;
                 _history.Enqueue(new(frame, block.Snapshot is not null)); _historyBytes += frame.Length;
                 while (_historyBytes > 32 * 1024 * 1024 || _history.Count > 2048) _historyBytes -= _history.Dequeue().Bytes.Length;

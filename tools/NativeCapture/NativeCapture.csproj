@@ -5,4 +5,8 @@
     <Reference Include="Microsoft.Diagnostics.NETCore.Client"><HintPath>$(MSBuildSDKsPath)/../Extensions/Microsoft.Diagnostics.NETCore.Client.dll</HintPath></Reference>
     <Reference Include="Microsoft.Extensions.Logging.Abstractions"><HintPath>$(MSBuildSDKsPath)/../Microsoft.Extensions.Logging.Abstractions.dll</HintPath></Reference>
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/DiagnosticsVisualizer.Analysis/DiagnosticsVisualizer.Analysis.csproj" />
+    <ProjectReference Include="../../src/DiagnosticsVisualizer.Transport/DiagnosticsVisualizer.Transport.csproj" />
+  </ItemGroup>
 </Project>

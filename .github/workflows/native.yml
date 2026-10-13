@@ -2,9 +2,9 @@ name: Native CLR attachment
 on:
   push:
     branches: [main]
-    paths: ['native/**', 'tools/NativeCapture/**', 'tests/DiagnosticsVisualizer.NativeFixture/**', '.github/workflows/native.yml']
+    paths: ['native/**', 'tools/NativeCapture/**', 'tests/DiagnosticsVisualizer.NativeFixture/**', 'tests/DiagnosticsVisualizer.NativeImportValidation/**', 'src/DiagnosticsVisualizer.Protocol/**', 'src/DiagnosticsVisualizer.Transport/**', 'src/DiagnosticsVisualizer.Analysis/**', 'src/DiagnosticsVisualizer.Core/**', 'src/DiagnosticsVisualizer.Collector/**', '.github/workflows/native.yml']
   pull_request:
-    paths: ['native/**', 'tools/NativeCapture/**', 'tests/DiagnosticsVisualizer.NativeFixture/**', '.github/workflows/native.yml']
+    paths: ['native/**', 'tools/NativeCapture/**', 'tests/DiagnosticsVisualizer.NativeFixture/**', 'tests/DiagnosticsVisualizer.NativeImportValidation/**', 'src/DiagnosticsVisualizer.Protocol/**', 'src/DiagnosticsVisualizer.Transport/**', 'src/DiagnosticsVisualizer.Analysis/**', 'src/DiagnosticsVisualizer.Core/**', 'src/DiagnosticsVisualizer.Collector/**', '.github/workflows/native.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -44,6 +44,8 @@ jobs:
         run: |
           dotnet build tools/NativeCapture -c Release
           dotnet build tests/DiagnosticsVisualizer.NativeFixture -c Release
+          dotnet build tests/DiagnosticsVisualizer.NativeImportValidation -c Release
+          dotnet build src/DiagnosticsVisualizer.Collector -c Release
       - name: Attach to already running CLR and validate rewritten behavior
         shell: bash
         run: |
@@ -51,6 +53,9 @@ jobs:
           elif [[ "$RUNNER_OS" == macOS ]]; then LIB="$PWD/artifacts/native-build/libDiagnosticsVisualizerProfiler.dylib";
           else LIB="$PWD/artifacts/native-build/libDiagnosticsVisualizerProfiler.so"; fi
           python native/smoke.py "$LIB"
+      - name: Validate native import, conversion and authenticated late-join relay
+        shell: bash
+        run: python native/validate_streaming.py
       - name: Stage native redistributable with dependency attribution
         if: success()
         shell: bash
@@ -68,4 +73,5 @@ jobs:
             artifacts/native/*.json
             artifacts/native/*.log
             artifacts/native-package/
+            artifacts/native/converted.avtrace
           retention-days: 14
