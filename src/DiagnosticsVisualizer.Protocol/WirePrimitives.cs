@@ -102,9 +102,11 @@ public static class Crc32
         }
         return t;
     }
-    public static uint Compute(ReadOnlySpan<byte> data)
+    public static uint Compute(ReadOnlySpan<byte> data) => Compute(data, 0);
+    /// <summary>Continue a standard CRC-32 from a previously finalized checksum.</summary>
+    public static uint Compute(ReadOnlySpan<byte> data, uint prior)
     {
-        var crc = uint.MaxValue;
+        var crc = ~prior;
         foreach (var value in data) crc = Table[(crc ^ value) & 255] ^ (crc >> 8);
         return ~crc;
     }
