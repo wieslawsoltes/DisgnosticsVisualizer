@@ -54,12 +54,13 @@ public sealed class WorkbenchDockFactory(IReadOnlyDictionary<string, Control> vi
         }
         IList<IDockable> Panels(params string[] ids) => CreateList(ids.Where(_panels.ContainsKey).Select(id => _panels[id]).ToArray());
         var left = new ToolDock { Id = "left", Alignment = Alignment.Left, Proportion = preset == WorkspacePreset.Inspect ? .18 : .14,
-            VisibleDockables = Panels("visual", "logical"), IsCollapsable = false };
+            VisibleDockables = preset == WorkspacePreset.Native ? Panels("threads") : Panels("visual", "logical"), IsCollapsable = false };
         var right = new ToolDock { Id = "right", Alignment = Alignment.Right, Proportion = .23,
-            VisibleDockables = Panels("properties", "details", "bookmarks", "health"), IsCollapsable = false };
-        var documents = new DocumentDock { Id = "documents", IsCollapsable = false, Proportion = preset is WorkspacePreset.Resources or WorkspacePreset.Styling or WorkspacePreset.Properties ? .84 : .73, CanCreateDocument = false,
+            VisibleDockables = preset == WorkspacePreset.Native ? Panels("details", "health") : Panels("properties", "details", "bookmarks", "health"), IsCollapsable = false };
+        var documents = new DocumentDock { Id = "documents", IsCollapsable = false, Proportion = preset is WorkspacePreset.Resources or WorkspacePreset.Styling or WorkspacePreset.Properties or WorkspacePreset.Native ? .84 : .73, CanCreateDocument = false,
             VisibleDockables = preset switch
             {
+                WorkspacePreset.Native => Panels("native", "flame", "topdown", "sources"),
                 WorkspacePreset.Profile => Panels("flame", "topdown", "bottomup", "statistics", "async"),
                 WorkspacePreset.Compare => Panels("comparison", "timeline"),
                 WorkspacePreset.Properties => Panels("property-history", "bindings", "styling", "resources", "sources"),
@@ -68,17 +69,18 @@ public sealed class WorkbenchDockFactory(IReadOnlyDictionary<string, Control> vi
                 WorkspacePreset.Investigate => Panels("dispatcher", "routed", "bindings", "xaml", "dependencies", "sources"),
                 _ => Panels("timeline", "scene", "causality")
             } };
-        var bottom = new ToolDock { Id = "bottom", Alignment = Alignment.Bottom, Proportion = preset is WorkspacePreset.Resources or WorkspacePreset.Styling or WorkspacePreset.Properties ? .16 : .27,
-            VisibleDockables = Panels("events", "findings", "costs", "threads"), IsCollapsable = false };
-        left.ActiveDockable = _panels.GetValueOrDefault("visual"); right.ActiveDockable = _panels.GetValueOrDefault(preset == WorkspacePreset.Profile ? "details" : "properties");
-        documents.ActiveDockable = _panels.GetValueOrDefault(preset switch { WorkspacePreset.Profile => "flame", WorkspacePreset.Compare => "comparison", WorkspacePreset.Properties => "property-history", WorkspacePreset.Styling => "styling", WorkspacePreset.Resources => "resources", WorkspacePreset.Investigate => "dispatcher", _ => "timeline" });
-        bottom.ActiveDockable = _panels.GetValueOrDefault(preset == WorkspacePreset.Profile ? "costs" : "findings");
+        var bottom = new ToolDock { Id = "bottom", Alignment = Alignment.Bottom, Proportion = preset is WorkspacePreset.Resources or WorkspacePreset.Styling or WorkspacePreset.Properties or WorkspacePreset.Native ? .16 : .27,
+            VisibleDockables = preset == WorkspacePreset.Native ? Panels("events", "findings", "costs") : Panels("events", "findings", "costs", "threads"), IsCollapsable = false };
+        left.ActiveDockable = _panels.GetValueOrDefault(preset == WorkspacePreset.Native ? "threads" : "visual"); right.ActiveDockable = _panels.GetValueOrDefault(preset is WorkspacePreset.Profile or WorkspacePreset.Native ? "details" : "properties");
+        documents.ActiveDockable = _panels.GetValueOrDefault(preset switch { WorkspacePreset.Native => "native", WorkspacePreset.Profile => "flame", WorkspacePreset.Compare => "comparison", WorkspacePreset.Properties => "property-history", WorkspacePreset.Styling => "styling", WorkspacePreset.Resources => "resources", WorkspacePreset.Investigate => "dispatcher", _ => "timeline" });
+        bottom.ActiveDockable = _panels.GetValueOrDefault(preset is WorkspacePreset.Profile or WorkspacePreset.Native ? "costs" : "findings");
         var center = new ProportionalDock { Id = "center", Orientation = Dock.Model.Core.Orientation.Vertical, Proportion = preset == WorkspacePreset.Inspect ? .59 : .63,
             VisibleDockables = CreateList<IDockable>(documents, new ProportionalDockSplitter(), bottom) };
         var main = new ProportionalDock { Id = "main", Orientation = Dock.Model.Core.Orientation.Horizontal,
             VisibleDockables = CreateList<IDockable>(left, new ProportionalDockSplitter(), center, new ProportionalDockSplitter(), right) };
         var root = CreateRootDock(); root.Id = "Root"; root.IsCollapsable = false; root.ActiveDockable = main; root.DefaultDockable = main;
-        root.VisibleDockables = CreateList<IDockable>(main); root.HiddenDockables = CreateList<IDockable>(_panels.Values.Where(p => p is PanelDocument && !documents.VisibleDockables!.Contains(p)).ToArray());
+        root.VisibleDockables = CreateList<IDockable>(main); var visible = new HashSet<IDockable>(left.VisibleDockables!.Concat(right.VisibleDockables!).Concat(documents.VisibleDockables!).Concat(bottom.VisibleDockables!), ReferenceEqualityComparer.Instance);
+        root.HiddenDockables = CreateList<IDockable>(_panels.Values.Where(p => !visible.Contains(p)).ToArray());
         root.LeftPinnedDockables = CreateList<IDockable>(); root.RightPinnedDockables = CreateList<IDockable>(); root.TopPinnedDockables = CreateList<IDockable>(); root.BottomPinnedDockables = CreateList<IDockable>();
         return root;
     }

@@ -7,7 +7,7 @@ using DiagnosticsVisualizer.Workbench.Docking;
 
 namespace DiagnosticsVisualizer.Workbench.Persistence;
 
-public enum WorkspacePreset { Inspect, Profile, Compare, Investigate, Resources, Styling, Properties }
+public enum WorkspacePreset { Inspect, Profile, Compare, Investigate, Resources, Styling, Properties, Native }
 public sealed record DockNodeState
 {
     public string Kind { get; init; } = "Panel";

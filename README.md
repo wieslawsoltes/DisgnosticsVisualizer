@@ -4,7 +4,29 @@ Cross-subsystem Avalonia recording, analysis and a shared desktop/WebAssembly Ri
 
 [Browser workbench](https://wieslawsoltes.github.io/DisgnosticsVisualizer/) · [Build and integration](https://github.com/wieslawsoltes/DisgnosticsVisualizer/actions/workflows/build.yml) · [Browser verification and deployment](https://github.com/wieslawsoltes/DisgnosticsVisualizer/actions/workflows/browser.yml)
 
-**0.1.0-alpha.13.** The browser starts with an explicitly labelled synthetic example, not a live attachment. This is an actively validated implementation, not a claim that every Avalonia release, native backend or DevTools capability is covered. Check workflow results for deployment status.
+**0.1.0-alpha.14.** The browser starts with an explicitly labelled synthetic example, not a live attachment. This is an actively validated implementation, not a claim that every Avalonia release, native backend or DevTools capability is covered. Check workflow results for deployment status.
+
+## New in alpha.14: native CLR capture and streaming inspection
+
+The optional native profiler attaches to an already running authorized .NET process,
+ReJITs explicitly selected methods and records normal returns and exceptional unwinds
+without editing assemblies on disk. Windows, Linux and macOS share the checked runtime
+SDK adapter. This method-level path is separate from build-time Avalonia semantic weaving.
+
+Open native `.dvntrace` files directly in desktop or browser. The **Native** docking preset
+shows coverage, original method identities, thread-slot/OS-thread mapping and terminal
+integrity, with explicit open/incomplete calls. Native provenance and UTC origin survive
+binary export. The shared Rider layout remains isolated from an embedding application.
+
+`NativeCapture relay` provides authenticated TCP/TLS forwarding of an append-only recording,
+bounded reconnect replay, late-join metadata and explicit unsupported-control replies. The
+browser uses the existing WebSocket gateway. `inspect` and atomic `convert` commands also
+work without attaching a process. See [native build, commands and limits](native/README.md).
+
+GPU timing/counters, exhaustive custom scheduler and XAML setter/candidate mappings remain
+outside this release. Stopping native capture does **not** detach/revert the profiler. The
+native binaries are workflow artifacts; the ten reusable NuGet packages remain separately
+published through the existing trusted-publishing workflow.
 
 ## New: property operations and value history
 
@@ -69,7 +91,7 @@ Run `bash eng/pack.sh` to build the local feed. Until NuGet.org publication, add
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="DiagnosticsVisualizer.Build" Version="0.1.0-alpha.13" />
+  <PackageReference Include="DiagnosticsVisualizer.Build" Version="0.1.0-alpha.14" />
 </ItemGroup>
 ```
 
@@ -128,7 +150,7 @@ The reproducible ingestion benchmark validates output checksums and retained/evi
 
 ## Remaining boundaries and publishing
 
-Native CLR profiler/ReJIT attachment, GPU timestamp/counter backends, complete custom-scheduler causality, exhaustive private semantic coverage and complete XAML setter/element mappings remain separate work. The current property history observes supported mutation/notification paths; it does not reconstruct every property-store candidate or prove a global winner at every moment.
+GPU timestamp/counter backends, complete custom-scheduler causality, exhaustive private semantic coverage and complete XAML setter/element mappings remain separate work. The current property history observes supported mutation/notification paths; it does not reconstruct every property-store candidate or prove a global winner at every moment.
 
 Pages deployment follows browser validation on `main`. `release.yml` builds, tests, packages and checks integration before **NuGet trusted publishing** through `NuGet/login@v1` and GitHub OIDC. Register the NuGet policy for owner `wieslawsoltes`, repository `DisgnosticsVisualizer`, workflow `release.yml`, environment `nuget`, and configure `NUGET_USER`. This workflow cannot create the account-side publisher policy. Package validation is not a claim of NuGet.org upload.
 

@@ -55,6 +55,9 @@ public static partial class Program
         var eventGrid = visuals.OfType<DataGrid>().FirstOrDefault(grid => grid.Name == "EventsGrid");
         return JsonSerializer.Serialize(new
         {
+            nativeMethods = model?.Analysis?.NativeCapture?.Methods.Length ?? 0,
+            nativePairs = model?.Analysis?.NativeCapture?.PairedSpans ?? 0,
+            nativeCaptureVisible = visuals.OfType<NativeCaptureControl>().Any(c => c.IsEffectivelyVisible),
             propertyOperations = model?.Analysis?.PropertyOperations?.Calls.Length ?? 0,
             propertyHistoryVisible = visuals.OfType<PropertyHistoryControl>().Any(c => c.IsEffectivelyVisible),
             ready = view is not null, events = model?.Trace?.Events.Length ?? 0,

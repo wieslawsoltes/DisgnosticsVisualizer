@@ -42,6 +42,7 @@ jobs:
           node tests/browser/smoke.mjs
           node tests/browser/bindings.mjs
           node tests/browser/properties.mjs
+          node tests/browser/native.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:

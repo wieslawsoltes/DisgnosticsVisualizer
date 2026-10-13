@@ -179,7 +179,7 @@ public sealed partial class WorkbenchView : UserControl, IDisposable
         _navigateBack.IsEnabled = _model.CanNavigateBack; _navigateForward.IsEnabled = _model.CanNavigateForward;
         _source.Text = _model.Source; _status.Text = _model.Status;
         _error.Text = _model.Error; _errorBanner.IsVisible = !string.IsNullOrEmpty(_model.Error);
-        _record.Content = _model.Recording && _model.Connected ? "Pause capture" : "Record"; _record.IsEnabled = _model.Connected;
+        _record.Content = _model.Recording && _model.Connected ? "Pause capture" : "Record"; _record.IsEnabled = _model.Connected && _model.SupportsRecordingControl;
         _connect.Content = _model.Connected ? "Disconnect" : "Connect";
     }
     public void Dispose()

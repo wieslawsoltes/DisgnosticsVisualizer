@@ -1,3 +1,4 @@
+using DiagnosticsVisualizer.Workbench.Persistence;
 using DiagnosticsVisualizer.Analysis;
 using DiagnosticsVisualizer.Controls;
 using DiagnosticsVisualizer.Core;
@@ -16,6 +17,8 @@ public sealed partial class WorkbenchView
     public void ShowStyleEvaluations() => _factory.Activate("styling");
     private readonly ResourceLookupsControl _resourceLookups = new();
     public void ShowResourceLookups() => _factory.Activate("resources");
+    private readonly NativeCaptureControl _nativeCapture = new();
+    public void ShowNativeCapture() => _factory.Activate("native");
     private readonly DispatcherOperationsControl _dispatcher = new();
     private readonly XamlOriginsControl _xaml = new();
     private XamlSourceIndex? _xamlIndex;
@@ -23,6 +26,11 @@ public sealed partial class WorkbenchView
     public void ShowXamlOrigins() => _factory.Activate("xaml");
     private void InitializeInvestigation()
     {
+        _factory.RegisterDocument("native", "Native CLR", _nativeCapture);
+        _commands.Add(("Open synthetic native example", "", () => { _model.LoadNativeDemo(); ApplyWorkspacePreset(WorkspacePreset.Native); return Task.CompletedTask; }));
+        _commands.Add(("Show Native CLR capture", "", () => { ShowNativeCapture(); return Task.CompletedTask; }));
+        _nativeCapture.EventSelected += id => _model.SelectEvent(id, false);
+        _nativeCapture.SourceRequested += id => { _model.SelectEvent(id, false); ShowSources(); };
         _factory.RegisterDocument("property-history", "Property history", _propertyHistory);
         _commands.Add(("Show Property history", "", () => { ShowPropertyHistory(); _propertyHistory.ShowHistory(); return Task.CompletedTask; }));
         _propertyHistory.EventSelected += id => _model.SelectEvent(id, false);
@@ -59,6 +67,7 @@ public sealed partial class WorkbenchView
     }
     private void UpdateInvestigation(TraceView trace, AnalysisResult analysis)
     {
+        _nativeCapture.SetTrace(trace, analysis.NativeCapture);
         _propertyHistory.SetTrace(trace, analysis.PropertyOperations ?? new(trace));
         _bindings.SetTrace(trace, analysis.BindingOperations ?? new(trace));
         _routed.SetTrace(trace, analysis.RoutedDispatches);

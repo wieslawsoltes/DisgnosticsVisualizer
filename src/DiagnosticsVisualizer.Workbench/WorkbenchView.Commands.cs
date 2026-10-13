@@ -26,7 +26,7 @@ public sealed partial class WorkbenchView
         var files = await storage.OpenFilePickerAsync(new()
         {
             Title = baseline ? "Open baseline trace" : "Open Avalonia trace", AllowMultiple = false,
-            FileTypeFilter = [new FilePickerFileType("Avalonia binary trace") { Patterns = ["*.avtrace"], MimeTypes = ["application/octet-stream"] }]
+            FileTypeFilter = [new FilePickerFileType("Avalonia binary trace") { Patterns = ["*.avtrace", "*.dvntrace"], MimeTypes = ["application/octet-stream"] }]
         });
         if (files.Count == 0) return;
         var properties = await files[0].GetBasicPropertiesAsync();
