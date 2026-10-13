@@ -4,7 +4,13 @@ Cross-subsystem Avalonia recording, analysis and a shared desktop/WebAssembly Ri
 
 [Browser workbench](https://wieslawsoltes.github.io/DisgnosticsVisualizer/) · [Build and integration](https://github.com/wieslawsoltes/DisgnosticsVisualizer/actions/workflows/build.yml) · [Browser verification and deployment](https://github.com/wieslawsoltes/DisgnosticsVisualizer/actions/workflows/browser.yml)
 
-**0.1.0-alpha.14.** The browser starts with an explicitly labelled synthetic example, not a live attachment. This is an actively validated implementation, not a claim that every Avalonia release, native backend or DevTools capability is covered. Check workflow results for deployment status.
+**0.1.0-alpha.15.** The browser starts with an explicitly labelled synthetic example, not a live attachment. This is an actively validated implementation, not a claim that every Avalonia release, native backend or DevTools capability is covered. Check workflow results for deployment status.
+
+## New in alpha.15
+
+The native profiler now attempts method-level **reversion to original IL when timed or budgeted recording ends**, after closing new rewrite admission and draining active rewriters. Each method retains the CLR's individual result; top-level request acceptance is not reported as universal success. Version-3 native files identify these outcomes. Older v1/v2 files still import under their original semantics. The shared Native workspace distinguishes reverted methods from failed reversion, actual execution and incomplete active frames.
+
+Reversion is not profiler detachment: the library remains loaded for callbacks from old active frames, and previously recompiled inliners are not promised their original optimization. Runtime shutdown does not request reversion from a CLR callback. See [native shutdown and reversion](docs/native-reversion.md).
 
 ## New in alpha.14: native CLR capture and streaming inspection
 
@@ -24,7 +30,7 @@ browser uses the existing WebSocket gateway. `inspect` and atomic `convert` comm
 work without attaching a process. See [native build, commands and limits](native/README.md).
 
 GPU timing/counters, exhaustive custom scheduler and XAML setter/candidate mappings remain
-outside this release. Stopping native capture does **not** detach/revert the profiler. The
+outside this release. Stopping native capture does **not** detach the profiler; v3 records the method-reversion results described above. The
 native binaries are workflow artifacts; the ten reusable NuGet packages remain separately
 published through the existing trusted-publishing workflow.
 
@@ -95,7 +101,7 @@ Run `bash eng/pack.sh` to build the local feed. Until NuGet.org publication, add
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="DiagnosticsVisualizer.Build" Version="0.1.0-alpha.14" />
+  <PackageReference Include="DiagnosticsVisualizer.Build" Version="0.1.0-alpha.15" />
 </ItemGroup>
 ```
 
