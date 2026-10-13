@@ -1,6 +1,8 @@
 """Validate real native-file import, authenticated live forwarding and late-joining WebSocket metadata."""
 from pathlib import Path
 import json, os, subprocess, threading, time, urllib.request
+from dataclasses import asdict
+from streaming_fixture import choose_pause
 root = Path(__file__).resolve().parent.parent
 out = root / 'artifacts/native'
 dotnet = os.environ.get('DOTNET_HOST_PATH', 'dotnet')
@@ -9,6 +11,8 @@ verifier = root / 'tests/DiagnosticsVisualizer.NativeImportValidation/bin/Releas
 collector = root / 'src/DiagnosticsVisualizer.Collector/bin/Release/net10.0/DiagnosticsVisualizer.Collector.dll'
 reference = out / 'reference.dvntrace'
 env = os.environ.copy(); env['AVTRACE_TOKEN'] = os.urandom(32).hex()
+pause = choose_pause(reference.read_bytes())
+(out / 'native-streaming-plan.json').write_text(json.dumps(asdict(pause), indent=2))
 def run(arguments, log):
     result = subprocess.run([dotnet, *map(str, arguments)], capture_output=True, text=True, timeout=40, env=env, cwd=root)
     (out / log).write_text(result.stdout + result.stderr)
@@ -24,10 +28,10 @@ def append():
             # Pause after enough records to evict the original method/thread definitions
             # from the collector tail. The late viewer must obtain materialized provenance.
             total = 0
-            while data := reader.read(16384):
+            while data := reader.read(min(16384, pause.byte_offset - total) if not ready.is_set() else 16384):
                 if cancel.is_set(): return
                 writer.write(data); total += len(data)
-                if total >= 2 * 1024 * 1024 and not ready.is_set():
+                if total == pause.byte_offset and not ready.is_set():
                     ready.set()
                     if not release.wait(15): raise TimeoutError('Late viewer did not connect')
                 time.sleep(.003)
@@ -54,7 +58,7 @@ try:
     if not ready.wait(15) or errors: raise RuntimeError(errors or 'Append workload did not reach the late-join point')
     for _ in range(100):
         with urllib.request.urlopen('http://127.0.0.1:4317/health', timeout=2) as response: health = json.load(response)
-        if health['frames'] > 100: break
+        if health['frames'] >= pause.blocks: break
         time.sleep(.02)
     else: raise RuntimeError('Events were not forwarded before the footer')
     viewer = start([verifier, 'remote', 'ws://127.0.0.1:4317/trace', out / 'native-relay-report.json'], 'native-viewer.log'); processes.append(viewer)
