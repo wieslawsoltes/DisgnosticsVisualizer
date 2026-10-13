@@ -127,7 +127,7 @@ public sealed class CaptureHub(CollectorOptions options, ILogger<CaptureHub> log
         while (await viewer.Connection.ReceiveAsync(cancellationToken).ConfigureAwait(false) is { } frame)
         {
             var command = CommandCodec.Decode(frame);
-            if (command.Kind is not (CommandKind.RequestSnapshot or CommandKind.SelectObject or CommandKind.Pause or CommandKind.Resume or CommandKind.Ping))
+            if (command.Kind is not (CommandKind.RequestSnapshot or CommandKind.SelectObject or CommandKind.Pause or CommandKind.Resume or CommandKind.Ping or CommandKind.Capabilities))
                 throw new InvalidDataException("Viewer command is not permitted.");
             var now = Environment.TickCount64;
             if (now - viewer.Window >= 1000) { viewer.Window = now; viewer.Commands = 0; }

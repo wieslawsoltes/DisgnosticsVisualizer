@@ -16,6 +16,8 @@ struct Configuration {
     uint64_t utcTicks = 0;
     std::array<uint8_t,16> session{};
     std::string path;
+    uint16_t controlPort = 0;
+    std::array<uint8_t,32> controlToken{};
     std::vector<std::string> rules;
     static Configuration Parse(const uint8_t* data, size_t length);
 };
@@ -43,7 +45,7 @@ class Recorder {
 public:
     Configuration config;
     uint64_t origin = 0;
-    std::atomic<bool> accepting{false};
+    std::atomic<bool> accepting{false}, paused{false};
     std::atomic<uint32_t> inFlight{0}, nextThread{0};
     std::atomic<uint64_t> dropped{0}, faults{0}, ioFaults{0}, methodsRequested{0}, methodsInstrumented{0}, compilations{0}, rejitErrors{0};
     std::array<ThreadBuffer,ThreadLimit> threads{};

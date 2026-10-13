@@ -1,6 +1,6 @@
 """Validate real native-file import, authenticated live forwarding and late-joining WebSocket metadata."""
 from pathlib import Path
-import json, os, subprocess, threading, time, urllib.request
+import json, os, struct, subprocess, threading, time, urllib.request
 from dataclasses import asdict
 from streaming_fixture import choose_pause
 root = Path(__file__).resolve().parent.parent
@@ -12,7 +12,7 @@ collector = root / 'src/DiagnosticsVisualizer.Collector/bin/Release/net10.0/Diag
 reference = out / 'reference.dvntrace'
 env = os.environ.copy(); env['AVTRACE_TOKEN'] = os.urandom(32).hex()
 pause = choose_pause(reference.read_bytes())
-(out / 'native-streaming-plan.json').write_text(json.dumps(asdict(pause), indent=2))
+(out / 'native-streaming-plan.json').write_text(json.dumps({**asdict(pause), 'maximumReplayBurstFrames': 4, 'readiness': 'client-data-and-control-roundtrip'}, indent=2))
 def run(arguments, log):
     result = subprocess.run([dotnet, *map(str, arguments)], capture_output=True, text=True, timeout=40, env=env, cwd=root)
     (out / log).write_text(result.stdout + result.stderr)
@@ -27,14 +27,27 @@ def append():
         with reference.open('rb') as reader, source.open('xb', buffering=0) as writer:
             # Pause after enough records to evict the original method/thread definitions
             # from the collector tail. The late viewer must obtain materialized provenance.
-            total = 0
-            while data := reader.read(min(16384, pause.byte_offset - total) if not ready.is_set() else 16384):
+            # Native event frames vary by producer throughput. A byte-paced
+            # replay can release dozens of tiny Windows frames in one burst,
+            # overwhelming the intentionally bounded 64-frame viewer queue.
+            # This test checks streaming/late joining, not overload behavior.
+            header = reader.read(68)
+            if len(header) != 68: raise ValueError('Truncated reference header')
+            writer.write(header); total = len(header); frame_count = 0
+            while header := reader.read(12):
                 if cancel.is_set(): return
-                writer.write(data); total += len(data)
+                if len(header) != 12: raise ValueError('Truncated reference frame')
+                length = struct.unpack_from('<I', header, 4)[0]
+                if length > 65536: raise ValueError('Oversized reference frame')
+                payload = reader.read(length)
+                if len(payload) != length: raise ValueError('Truncated reference payload')
+                writer.write(header[:5]); writer.write(header[5:])
+                for start in range(0, length, 8192): writer.write(payload[start:start + 8192])
+                total += 12 + length; frame_count += 1
                 if total == pause.byte_offset and not ready.is_set():
                     ready.set()
-                    if not release.wait(15): raise TimeoutError('Late viewer did not connect')
-                time.sleep(.003)
+                    if not release.wait(15): raise TimeoutError('Late viewer did not complete its data/control handshake')
+                if frame_count % 4 == 0: time.sleep(.003)
     except BaseException as error:
         errors.append(str(error)); ready.set()
 logs = []
@@ -62,12 +75,12 @@ try:
         time.sleep(.02)
     else: raise RuntimeError('Events were not forwarded before the footer')
     viewer = start([verifier, 'remote', 'ws://127.0.0.1:4317/trace', out / 'native-relay-report.json'], 'native-viewer.log'); processes.append(viewer)
-    for _ in range(100):
-        with urllib.request.urlopen('http://127.0.0.1:4317/health', timeout=2) as response: health = json.load(response)
-        if health['viewers'] > 0: break
-        if viewer.poll() is not None: raise RuntimeError('Viewer exited before readiness')
-        time.sleep(.02)
-    else: raise RuntimeError('Viewer did not connect')
+    readiness_deadline = time.monotonic() + 10
+    while time.monotonic() < readiness_deadline:
+        if 'NATIVE_VIEWER_READY' in (out / 'native-viewer.log').read_text(encoding='utf-8'): break
+        if viewer.poll() is not None: raise RuntimeError('Viewer exited before its data/control handshake')
+        time.sleep(.025)
+    else: raise RuntimeError('Viewer did not confirm pre-footer data and control replies')
     release.set(); worker.join(20)
     if worker.is_alive() or errors: raise RuntimeError(errors or 'Writer did not terminate')
     relay.wait(20); viewer.wait(20)

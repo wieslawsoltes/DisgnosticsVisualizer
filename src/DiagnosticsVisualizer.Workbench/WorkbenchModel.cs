@@ -37,7 +37,11 @@ public sealed partial class WorkbenchModel : INotifyPropertyChanged, IAsyncDispo
     public string Error { get => _error; private set => Set(ref _error, value); }
     public bool Recording { get => _recording; private set => Set(ref _recording, value); }
     public bool IsDemo { get => _isDemo; private set => Set(ref _isDemo, value); }
-    public bool SupportsRecordingControl => Trace?.NativeMetadata.Count is not > 0;
+    private bool _nativeControlAvailable;
+    private long _nativeCapabilityRequest;
+    private Guid _nativeCapabilitySession;
+    public bool SupportsRecordingControl => Trace?.NativeMetadata.Count is not > 0 ||
+        Connected && _nativeControlAvailable && Analysis?.NativeCapture?.End is null;
     public bool Connected => _connection is not null || _localCommand is not null;
     public long SelectedObjectId => _selectedObject;
     public long SelectedEventId => _selectedEvent;
@@ -114,12 +118,18 @@ public sealed partial class WorkbenchModel : INotifyPropertyChanged, IAsyncDispo
                 if (WireEnvelope.GetKind(frame) is FrameKind.Trace or FrameKind.SnapshotDelta)
                 {
                     var block = decoder.Decode(frame); store.Add(block);
-                    if (block.Events.Length > 0 || block.Snapshot is not null || block.Recording != Recording || block.DroppedEvents != Trace?.DroppedEvents)
+                    if (block.Events.Length > 0 || block.Symbols.Length > 0 || block.Snapshot is not null || block.Recording != Recording || block.DroppedEvents != Trace?.DroppedEvents)
                         Interlocked.Exchange(ref _dirty, 1);
                 }
                 else
                 {
                     var response = CommandCodec.Decode(frame);
+                    if (response.RequestId == Interlocked.Read(ref _nativeCapabilityRequest) && _nativeCapabilityRequest != 0)
+                    {
+                        Dispatcher.UIThread.Post(() => { if (generation == _generation && response.RequestId == Interlocked.Read(ref _nativeCapabilityRequest)) { _nativeControlAvailable = response.Argument == "NATIVE_PAUSE_RESUME"; Raise(nameof(SupportsRecordingControl)); } });
+                        continue;
+                    }
+                    if (response.Argument == "SOURCE_DISCONNECTED") Dispatcher.UIThread.Post(() => { if (generation == _generation) { _nativeControlAvailable = false; Raise(nameof(SupportsRecordingControl)); } });
                     if (response.Argument is not ("OK" or "AUTHENTICATED")) Dispatcher.UIThread.Post(() =>
                     { if (generation == _generation) Status = response.Argument switch
                         { "NO_SOURCE" => "Collector connected · waiting for an instrumented application", "SOURCE_DISCONNECTED" => "Target disconnected · retained trace remains available", _ => response.Argument }; });
@@ -133,6 +143,7 @@ public sealed partial class WorkbenchModel : INotifyPropertyChanged, IAsyncDispo
     public async Task DisconnectAsync()
     {
         Interlocked.Increment(ref _generation); _connectionStop?.Cancel();
+        _nativeControlAvailable = false; _nativeCapabilitySession = Guid.Empty; Interlocked.Exchange(ref _nativeCapabilityRequest, 0);
         if (_connection is not null) await _connection.DisposeAsync();
         try { await _receiveTask; } catch (OperationCanceledException) { }
         _connection = null; _localCommand = null; _connectionStop?.Dispose(); _connectionStop = null; _receiveTask = Task.CompletedTask;
@@ -165,7 +176,7 @@ public sealed partial class WorkbenchModel : INotifyPropertyChanged, IAsyncDispo
     public async Task ToggleRecordingAsync()
     {
         if (!Connected) { ReportError("Connect to an instrumented target to start or pause recording."); return; }
-        if (!SupportsRecordingControl) { ReportError("Native capture uses its configured duration; pause/resume is not supported by this recorder."); return; }
+        if (!SupportsRecordingControl) { ReportError("Native pause/resume requires an explicitly configured live sidecar and an acknowledged control capability."); return; }
         await SendCommandAsync(Recording ? CommandKind.Pause : CommandKind.Resume);
     }
     public Task RequestSnapshotAsync() => SendCommandAsync(CommandKind.RequestSnapshot, _selectedObject);
@@ -225,7 +236,10 @@ public sealed partial class WorkbenchModel : INotifyPropertyChanged, IAsyncDispo
     }
     private void Apply(TraceView trace, AnalysisResult analysis, TraceProfile? index = null, ProfileResult? profile = null, ProfileResult? selectedProfile = null, TraceRange? analyzedRange = null)
     {
-        Trace = trace; Analysis = analysis; _events = trace.Events.ToDictionary(e => e.Id); Recording = trace.Recording;
+        Trace = trace; Analysis = analysis;
+        if (Connected && trace.NativeMetadata.Count > 0 && _nativeCapabilitySession != trace.SessionId)
+        { _nativeCapabilitySession = trace.SessionId; _nativeControlAvailable = false; _ = QueryNativeCapabilitiesAsync(_generation); }
+        Raise(nameof(SupportsRecordingControl)); _events = trace.Events.ToDictionary(e => e.Id); Recording = trace.Recording;
         _profileIndex = index ?? new TraceProfile(trace); FullProfile = profile ?? _profileIndex.Analyze();
         Profile = Range is null ? FullProfile : analyzedRange == Range ? selectedProfile : null;
         if (Range is { } range && Profile is null) _ = RefreshRangeAsync(range);
@@ -233,6 +247,22 @@ public sealed partial class WorkbenchModel : INotifyPropertyChanged, IAsyncDispo
         if (_selectedObject == 0) _selectedObject = trace.Snapshot.SelectedObject;
         SelectionChanged?.Invoke(_events.TryGetValue(_selectedEvent, out var selected) ? selected : null, _selectedObject, false);
         NavigationChanged(); Raise(nameof(Trace)); Raise(nameof(Analysis));
+    }
+    private async Task QueryNativeCapabilitiesAsync(int generation)
+    {
+        var id = Interlocked.Increment(ref _request); Interlocked.Exchange(ref _nativeCapabilityRequest, id);
+        var command = new TraceCommand(id, CommandKind.Capabilities);
+        try
+        {
+            if (_connection is not null) await _connection.SendAsync(CommandCodec.Encode(command), _connectionStop?.Token ?? default);
+            else if (_localCommand is not null)
+            {
+                var reply = await _localCommand(command);
+                if (generation == _generation) { _nativeControlAvailable = reply.Argument == "NATIVE_PAUSE_RESUME"; Raise(nameof(SupportsRecordingControl)); }
+            }
+        }
+        catch (Exception e) when (e is IOException or OperationCanceledException or ObjectDisposedException or System.Net.Sockets.SocketException)
+        { if (generation == _generation) { _nativeControlAvailable = false; Raise(nameof(SupportsRecordingControl)); } }
     }
     public void ReportError(string error) { Error = error; Status = "Attention required"; }
     public void ClearError() => Error = "";

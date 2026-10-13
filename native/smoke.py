@@ -39,7 +39,7 @@ assert hashes=={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in paths
 lines=(output/'target.log').read_text().splitlines();results=[json.loads(line) for line in lines if line.startswith('{')]
 assert results and results[-1]['iterations']==results[-1]['finallyCount'] and results[-1]['iterations']>10000,results
 b=capture.read_bytes();assert b[:8]==b'DVNTRC01' and len(b)<=128*1024*1024
-assert struct.unpack_from("<II",b,8)==(2,0)
+assert struct.unpack_from("<II",b,8)==(3,0)
 assert zlib.crc32(b[:64])==struct.unpack_from("<I",b,64)[0]
 position=68;methods={};status={};threads={};events=[];footer=None
 while position<len(b):
@@ -63,7 +63,8 @@ while position<len(b):
 assert footer is not None and footer[0]==0,footer
 assert footer[3:6]==(0,0,0) and footer[9]==0,footer # drops, probe/I/O faults and ReJIT errors
 assert set(methods.values())==set(rules),methods
-assert all(state==2 and hr==0 and count>0 for state,hr,count in status.values()),status
+assert set(status)==set(methods),'Every selected definition must retain its final reversion result'
+assert all(state==3 and hr==0 and count>0 for state,hr,count in status.values()),status
 assert len(threads)>=4,threads
 starts={};completed={};method_counts=collections.Counter();outcomes=collections.Counter()
 for cookie,parent,at,duration,site,thread,kind,flags in events:
@@ -86,7 +87,7 @@ assert all(method_counts[r]>20 for r in rules),method_counts
 report={'status':'passed','attachedToAlreadyRunningProcess':True,'targetFilesUnchanged':True,'target':results[-1],
         'events':len(events),'threads':len(threads),'completed':len(completed),'openAtStop':footer[-1],
         'droppedRecords':footer[3],'recorderFaults':footer[4],'ioFaults':footer[5],'requestedMethods':footer[6],
-        'instrumentedMethods':footer[7],'rejitCompilations':footer[8],'rejitErrors':footer[9],
+        'instrumentedMethods':footer[7],'revertedMethods':sum(state==3 for state,_,_ in status.values()),'rejitCompilations':footer[8],'rejitErrors':footer[9],
         'returned':outcomes[1],'unwound':outcomes[2],'calls':dict(method_counts),'fileSha256':hashlib.sha256(b).hexdigest(),
         'boundary':'Observed selected-method lifetimes include waits. This is not GPU or CPU-utilization measurement, an async lifetime, or Avalonia object-tree inspection.'}
 (output/'native-report.json').write_text(json.dumps(report,indent=2));print(json.dumps(report))

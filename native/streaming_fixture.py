@@ -15,7 +15,7 @@ class PausePoint:
 def choose_pause(data: bytes, tail_blocks: int = 48) -> PausePoint:
     if len(data) < 68 or len(data) > 128 * 1024 * 1024 or data[:8] != b'DVNTRC01':
         raise ValueError('Invalid reference capture header or file budget')
-    if struct.unpack_from('<II', data, 8) != (2, 0) or zlib.crc32(data[:64]) != struct.unpack_from('<I', data, 64)[0]:
+    if struct.unpack_from('<II', data, 8) not in ((2, 0), (3, 0)) or zlib.crc32(data[:64]) != struct.unpack_from('<I', data, 64)[0]:
         raise ValueError('Invalid reference capture version or header checksum')
     offset, blocks, last_identity = 68, 1, 1
     statuses = {}

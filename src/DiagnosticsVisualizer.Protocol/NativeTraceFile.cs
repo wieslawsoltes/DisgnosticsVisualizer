@@ -11,7 +11,7 @@ public static class NativeTraceFile
     public const int HeaderBytes = 68, MaximumFrameBytes = 65536;
     public const long MaximumFileBytes = 128L * 1024 * 1024;
     public static bool IsMagic(ReadOnlySpan<byte> bytes) => bytes.Length >= 8 && bytes[..8].SequenceEqual("DVNTRC01"u8);
-    private sealed class State(Guid session, long frequency, long origin, long utc, bool follow)
+    private sealed class State(Guid session, long frequency, long origin, long utc, bool follow, uint version)
     {
         public readonly Dictionary<int, Symbol> Sites = [];
         public readonly Dictionary<int, NativeThreadInfo> Threads = [];
@@ -19,11 +19,13 @@ public static class NativeTraceFile
         public readonly HashSet<long> EventIds = [];
         public long Sequence, Records, Bytes = HeaderBytes, LastEnd;
         public int MetadataId = 1_000_000;
+        private long _heartbeat;
         public NativeCaptureEnd? Footer;
+        public NativeControlState? Control;
         public TraceBlock Block(TraceEvent[]? events = null, Symbol[]? symbols = null) => new()
         {
             SessionId = session, Sequence = ++Sequence, Frequency = frequency, OriginTimestamp = origin, UtcStartTicks = utc,
-            Recording = follow && Footer is null, Events = events ?? [], Symbols = symbols ?? [], DroppedEvents = Footer?.DroppedRecords ?? 0, ProbeFaults = Footer?.RecorderFaults ?? 0
+            Recording = follow && Footer is null && (Control is null || Control.State == 0), Events = events ?? [], Symbols = symbols ?? [], DroppedEvents = Footer?.DroppedRecords ?? 0, ProbeFaults = Footer?.RecorderFaults ?? 0
         };
         public Symbol Symbol(NativeMetadata entry)
         {
@@ -64,15 +66,31 @@ public static class NativeTraceFile
                     r.Finish(); return Block(events, events.Select(e => e.NameId).Distinct().Select(id => Sites[id]).ToArray());
                 case 4:
                     var methodInfo = new NativeMethodInfo(r.Id(4096), r.Int32(), r.Int32(), r.UInt32());
-                    if (!Sites.ContainsKey(methodInfo.SiteId) || methodInfo.Status is < -7 or > 2) throw new InvalidDataException("Invalid native method status.");
+                    if (!Sites.ContainsKey(methodInfo.SiteId) || (version < 3 ? methodInfo.Status is < -7 or > 2 : methodInfo.Status is < -8 or > 3)) throw new InvalidDataException("Invalid native method status.");
                     r.Finish();
                     if (Methods.GetValueOrDefault(methodInfo.SiteId) == methodInfo) return null;
                     Methods[methodInfo.SiteId] = methodInfo; return Block(symbols: [Symbol(methodInfo)]);
                 case 5:
-                    var reason = r.UInt32(); if (reason > 3 || r.UInt32() != 0) throw new InvalidDataException("Invalid native stop reason.");
+                    var reason = r.UInt32(); if (reason > (version >= 4 ? 7 : 3) || reason == 4 || r.UInt32() != 0) throw new InvalidDataException("Invalid native stop reason.");
                     Footer = new(true, false, (int)reason, r.Int64(), r.Int64(), r.Int64(), r.Int64(), r.Int64(), r.Int64(), r.Int64(), r.Int64(), r.Int64(), Records, Bytes);
+                    if (version >= 4 && (Control is null || Footer.EndTimestamp < Control.Timestamp ||
+                        reason == 5 && Control.State != 2 || reason == 6 && Control.State != 3 || reason == 7 && Control.State != 4))
+                        throw new InvalidDataException("Native footer conflicts with control provenance.");
                     if (Footer.EndTimestamp < Math.Max(origin, LastEnd)) throw new InvalidDataException("Native capture ended before its events.");
                     NativeMetadataSymbol.Encode(Footer); r.Finish(); return Block(symbols: [Symbol(Footer)]);
+                case 7 when version >= 4:
+                    var heartbeat = r.Int64(); var state = r.Int32(); var revision = r.Int32(); r.Finish();
+                    if (Control is null || heartbeat < Math.Max(Control.Timestamp, _heartbeat) || state != Control.State || revision != Control.Revision)
+                        throw new InvalidDataException("Native heartbeat does not match recorded control state.");
+                    _heartbeat = heartbeat; LastEnd = Math.Max(LastEnd, heartbeat); return Block();
+                case 6 when version >= 4:
+                    var control = new NativeControlState(r.Id(1024), r.Int32(), r.Int64(), r.Int32(), r.Int32(), r.Int32(), r.Int32());
+                    r.Finish(); var controlSymbol = Symbol(control);
+                    if (control.Revision != (Control?.Revision ?? 0) + 1 || control.Timestamp < Math.Max(Control?.Timestamp ?? origin, _heartbeat) ||
+                        Control is { State: >= 2 } || Control is null && control.Operation != 0 ||
+                        control.Operation is 1 or 2 && control.State == Control?.State)
+                        throw new InvalidDataException("Invalid native control transition sequence.");
+                    Control = control; return Block(symbols: [controlSymbol]);
                 default: throw new InvalidDataException("Unknown native frame kind.");
             }
         }
@@ -98,9 +116,9 @@ public static class NativeTraceFile
         if (await ReadAvailable(stream, header.AsMemory(0, 64), idleTimeout, cancellationToken).ConfigureAwait(false) != 64 || !IsMagic(header))
             throw new InvalidDataException("Invalid or truncated native header.");
         var version = BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(8));
-        if (version is < 1 or > 2) throw new InvalidDataException("Unsupported native capture version.");
-        // v1 was the pre-release 64-byte header. v2 adds a checksum; it is never guessed by consuming a frame prefix.
-        if (version == 2 && (await ReadAvailable(stream, header.AsMemory(64, 4), idleTimeout, cancellationToken).ConfigureAwait(false) != 4 ||
+        if (version is < 1 or > 4) throw new InvalidDataException("Unsupported native capture version.");
+        // v1 had a 64-byte header; v2 adds a checksum; v3 adds checked method-reversion statuses; v4 adds explicit control and heartbeat frames.
+        if (version >= 2 && (await ReadAvailable(stream, header.AsMemory(64, 4), idleTimeout, cancellationToken).ConfigureAwait(false) != 4 ||
             BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(64)) != Crc32.Compute(header.AsSpan(0, 64))))
             throw new InvalidDataException("Invalid or truncated native header checksum.");
         var r = new Reader(header.AsSpan(12, 52));
@@ -109,7 +127,7 @@ public static class NativeTraceFile
         var process = new NativeProcessInfo(r.Id(int.MaxValue), r.Id(8), (int)version); r.Finish();
         if (frequency != 1_000_000_000 || utc > DateTime.MaxValue.Ticks || session == Guid.Empty || process.PointerBytes != 8)
             throw new InvalidDataException("Invalid native source clock or identity.");
-        var state = new State(session, frequency, origin, utc, idleTimeout is not null) { Bytes = version == 2 ? HeaderBytes : 64 };
+        var state = new State(session, frequency, origin, utc, idleTimeout is not null, version) { Bytes = version >= 2 ? HeaderBytes : 64 };
         await consume(state.Block(symbols: [state.Symbol(process)])).ConfigureAwait(false);
         var truncated = false;
         while (true)
@@ -120,7 +138,7 @@ public static class NativeTraceFile
             if (state.Footer is not null) { if (read != 0) throw new InvalidDataException("Trailing data after native footer."); break; }
             if (read < frameHeader.Length) { truncated = true; break; }
             var kind = BinaryPrimitives.ReadUInt32LittleEndian(frameHeader); var size = BinaryPrimitives.ReadUInt32LittleEndian(frameHeader.AsSpan(4));
-            if (kind is < 1 or > 5 || size > MaximumFrameBytes || state.Bytes > MaximumFileBytes - size)
+            if (kind < 1 || kind > (version >= 4 ? 7 : 5) || size > MaximumFrameBytes || state.Bytes > MaximumFileBytes - size)
                 throw new InvalidDataException("Invalid or oversized native frame.");
             var payload = new byte[(int)size]; read = await ReadAvailable(stream, payload, idleTimeout, cancellationToken).ConfigureAwait(false); state.Bytes += read;
             if (read != payload.Length) { truncated = true; break; }

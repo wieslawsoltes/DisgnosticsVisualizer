@@ -7,11 +7,40 @@ using DiagnosticsVisualizer.Core;
 using DiagnosticsVisualizer.Protocol;
 using DiagnosticsVisualizer.Transport;
 
-if (args.Length != 3 || args[0] is not ("offline" or "viewer" or "late" or "file" or "remote"))
+if (args.Length != 3 || args[0] is not ("offline" or "viewer" or "late" or "file" or "remote" or "control-file" or "control-viewer"))
     throw new ArgumentException("NativeImportValidation offline|viewer|late <file-or-websocket-url> <report.json>");
 using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+if (args[0] == "control-viewer")
+{
+    var token = Environment.GetEnvironmentVariable("AVTRACE_TOKEN") ?? throw new ArgumentException("Set AVTRACE_TOKEN");
+    await using var peer = await WebSocketFrameConnection.ConnectAsync(new(args[1]), token, false, deadline.Token);
+    var decoder = new TraceStreamDecoder(); var sent = false; bool paused = false, resumed = false; var phase = -1; var baselineRevision = 0; NativeControlState? observed = null;
+    while (await peer.ReceiveAsync(deadline.Token) is { } frame)
+    {
+        if (WireEnvelope.GetKind(frame) is FrameKind.Trace or FrameKind.SnapshotDelta)
+        {
+            var block = decoder.Decode(frame);
+            foreach (var symbol in block.Symbols) if (NativeMetadataSymbol.TryDecode(symbol.Name, out var metadata) && metadata is NativeControlState c) observed = c;
+            paused |= phase >= 0 && observed is { State: 1 } && observed.Revision > baselineRevision && !block.Recording;
+            resumed |= paused && observed is { State: 0 } && observed.Revision > baselineRevision + 1 && block.Recording;
+            if (!sent) { sent = true; await peer.SendAsync(CommandCodec.Encode(new(201, CommandKind.Capabilities)), deadline.Token); }
+        }
+        else
+        {
+            var reply = CommandCodec.Decode(frame);
+            if (reply.RequestId == 201) { if (reply.Argument != "NATIVE_PAUSE_RESUME") throw new InvalidDataException("Native capability not verified"); baselineRevision = observed?.Revision ?? 0; phase = 0; await peer.SendAsync(CommandCodec.Encode(new(202, CommandKind.Pause)), deadline.Token); }
+            if (reply.RequestId == 202) { if (reply.Argument != "OK") throw new InvalidDataException("Native pause failed"); phase = 1; }
+            if (reply.RequestId == 203) { if (reply.Argument != "OK") throw new InvalidDataException("Native resume failed"); phase = 3; }
+        }
+        if (paused && phase == 1) { phase = 2; await peer.SendAsync(CommandCodec.Encode(new(203, CommandKind.Resume)), deadline.Token); }
+        if (resumed && phase == 3) break;
+    }
+    if (!paused || !resumed || phase != 3) throw new InvalidDataException("Native pause/resume and source states were not observed");
+    await File.WriteAllTextAsync(args[2], JsonSerializer.Serialize(new { status = "passed", capabilityAcknowledged = true, pauseAcknowledged = true, resumeAcknowledged = true, pausedStateRecorded = paused, resumedStateRecorded = resumed }));
+    return;
+}
 var store = new TraceStore(3_000_000); var commands = new Dictionary<long, string>(); long blocks = 0; var observedBeforeFooter = false; var hasFooter = false;
-if (args[0] is "offline" or "file")
+if (args[0] is "offline" or "file" or "control-file")
 {
     await using var input = File.OpenRead(args[1]);
     await NativeTraceFile.ReadAsync(input, b => { store.Add(b); blocks++; return ValueTask.CompletedTask; }, false, deadline.Token);
@@ -25,7 +54,7 @@ else
 {
     var token = Environment.GetEnvironmentVariable("AVTRACE_TOKEN") ?? throw new ArgumentException("Set AVTRACE_TOKEN");
     await using var connection = await WebSocketFrameConnection.ConnectAsync(new(args[1]), token, false, deadline.Token);
-    var decoder = new TraceStreamDecoder(); bool sent = false;
+    var decoder = new TraceStreamDecoder(); bool sent = false, announcedReady = false;
     while (await connection.ReceiveAsync(deadline.Token) is { } frame)
     {
         if (WireEnvelope.GetKind(frame) is FrameKind.Trace or FrameKind.SnapshotDelta)
@@ -46,12 +75,21 @@ else
             var reply = CommandCodec.Decode(frame); commands[reply.RequestId] = reply.Argument;
             if (reply.Argument == "SOURCE_DISCONNECTED" && blocks > 0 || args[0] == "late" && reply.Argument == "NO_SOURCE" && blocks > 0) break;
         }
+        // The segmented replay test must not resume its producer merely because
+        // the server accepted this socket. Signal actual pre-footer consumption
+        // and all three authenticated round trips, after the bootstrap is read.
+        if (!announcedReady && args[0] == "remote" && observedBeforeFooter && !hasFooter &&
+            commands.GetValueOrDefault(101) == "PONG" && commands.GetValueOrDefault(102) == "UNSUPPORTED_NATIVE_CONTROL" &&
+            commands.GetValueOrDefault(103) == "UNSUPPORTED_NATIVE_SNAPSHOT")
+        {
+            Console.WriteLine("NATIVE_VIEWER_READY"); Console.Out.Flush(); announcedReady = true;
+        }
     }
     if (args[0] is "viewer" or "remote" && (commands.GetValueOrDefault(101) != "PONG" || commands.GetValueOrDefault(102) != "UNSUPPORTED_NATIVE_CONTROL" || commands.GetValueOrDefault(103) != "UNSUPPORTED_NATIVE_SNAPSHOT"))
         throw new InvalidDataException("Native control capability responses were not preserved through the collector.");
 }
 var view = store.GetView(); var index = new NativeCaptureIndex(view);
-if (index.Process is null || index.End?.HasFooter != true || index.Methods.Length != 11 || index.Threads.Length < 4 || index.InvalidGroups != 0 || index.PairedSpans == 0)
+if (index.Process is null || index.End?.HasFooter != true || index.Methods.Length != (args[0] == "control-file" ? 3 : 11) || index.Threads.Length < (args[0] == "control-file" ? 3 : 4) || index.InvalidGroups != 0 || index.PairedSpans == 0)
     throw new InvalidDataException("Native coverage/provenance failed end-to-end validation.");
 if (args[0] is not ("late" or "remote") && (view.DroppedEvents != 0 || view.ProbeFaults != 0 || view.MissingBlocks != 0))
     throw new InvalidDataException("Reference native transport lost recorded data.");
@@ -65,7 +103,7 @@ using (var binary = new MemoryStream())
 }
 var result = new { eventsBeforeFooter = observedBeforeFooter, pingAcknowledged = commands.GetValueOrDefault(101) == "PONG", binaryRoundtrip = true, status = "passed", mode = args[0], blocks, events = view.Events.Length,
     eventSha256 = EventDigest(view), provenanceSha256 = ProvenanceDigest(view), index.PairedSpans,
-    index.UnmatchedEntries, index.UnmatchedCompletions, index.InvalidGroups, index.Incomplete,
+    index.Control, index.UnmatchedEntries, index.UnmatchedCompletions, index.InvalidGroups, index.Incomplete,
     view.DroppedEvents, view.ProbeFaults, view.MissingBlocks, definitions = index.Methods.Length, threads = index.Threads.Length, commands };
 await File.WriteAllTextAsync(args[2], JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }), deadline.Token);
 Console.WriteLine(JsonSerializer.Serialize(result));
