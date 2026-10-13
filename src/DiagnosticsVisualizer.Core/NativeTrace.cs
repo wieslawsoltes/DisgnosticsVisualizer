@@ -56,13 +56,13 @@ public static class NativeMetadataSymbol
             {
                 case 1 when a.GetArrayLength() is 3 or 4:
                     var process = new NativeProcessInfo(a[1].GetInt32(), a[2].GetInt32(), a.GetArrayLength() == 4 ? a[3].GetInt32() : 1);
-                    if (process.ProcessId <= 0 || process.PointerBytes != 8 || process.FormatVersion is < 1 or > 2) return false; value = process; return true;
+                    if (process.ProcessId <= 0 || process.PointerBytes != 8 || process.FormatVersion is < 1 or > 3) return false; value = process; return true;
                 case 2 when a.GetArrayLength() == 3:
                     var thread = new NativeThreadInfo(a[1].GetInt32(), a[2].GetUInt64());
                     if (thread.Slot is < 1 or > 64 || thread.OsThreadId == 0) return false; value = thread; return true;
                 case 3 when a.GetArrayLength() == 5:
                     var method = new NativeMethodInfo(a[1].GetInt32(), a[2].GetInt32(), a[3].GetInt32(), a[4].GetInt64());
-                    if (method.SiteId is < 1 or > 4096 || method.Status is < -7 or > 2 || method.Compilations < 0) return false; value = method; return true;
+                    if (method.SiteId is < 1 or > 4096 || method.Status is < -8 or > 3 || method.Compilations < 0 || method.Status == 3 && method.HResult != 0 || method.Status == -8 && method.HResult == 0) return false; value = method; return true;
                 case 4 when a.GetArrayLength() == 15:
                     var e = new NativeCaptureEnd(a[1].GetBoolean(), a[2].GetBoolean(), a[3].GetInt32(), a[4].GetInt64(), a[5].GetInt64(), a[6].GetInt64(),
                         a[7].GetInt64(), a[8].GetInt64(), a[9].GetInt64(), a[10].GetInt64(), a[11].GetInt64(), a[12].GetInt64(), a[13].GetInt64(), a[14].GetInt64());

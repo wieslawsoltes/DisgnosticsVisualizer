@@ -11,7 +11,7 @@ public static class NativeTraceFile
     public const int HeaderBytes = 68, MaximumFrameBytes = 65536;
     public const long MaximumFileBytes = 128L * 1024 * 1024;
     public static bool IsMagic(ReadOnlySpan<byte> bytes) => bytes.Length >= 8 && bytes[..8].SequenceEqual("DVNTRC01"u8);
-    private sealed class State(Guid session, long frequency, long origin, long utc, bool follow)
+    private sealed class State(Guid session, long frequency, long origin, long utc, bool follow, uint version)
     {
         public readonly Dictionary<int, Symbol> Sites = [];
         public readonly Dictionary<int, NativeThreadInfo> Threads = [];
@@ -64,7 +64,7 @@ public static class NativeTraceFile
                     r.Finish(); return Block(events, events.Select(e => e.NameId).Distinct().Select(id => Sites[id]).ToArray());
                 case 4:
                     var methodInfo = new NativeMethodInfo(r.Id(4096), r.Int32(), r.Int32(), r.UInt32());
-                    if (!Sites.ContainsKey(methodInfo.SiteId) || methodInfo.Status is < -7 or > 2) throw new InvalidDataException("Invalid native method status.");
+                    if (!Sites.ContainsKey(methodInfo.SiteId) || (version < 3 ? methodInfo.Status is < -7 or > 2 : methodInfo.Status is < -8 or > 3)) throw new InvalidDataException("Invalid native method status.");
                     r.Finish();
                     if (Methods.GetValueOrDefault(methodInfo.SiteId) == methodInfo) return null;
                     Methods[methodInfo.SiteId] = methodInfo; return Block(symbols: [Symbol(methodInfo)]);
@@ -98,9 +98,9 @@ public static class NativeTraceFile
         if (await ReadAvailable(stream, header.AsMemory(0, 64), idleTimeout, cancellationToken).ConfigureAwait(false) != 64 || !IsMagic(header))
             throw new InvalidDataException("Invalid or truncated native header.");
         var version = BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(8));
-        if (version is < 1 or > 2) throw new InvalidDataException("Unsupported native capture version.");
-        // v1 was the pre-release 64-byte header. v2 adds a checksum; it is never guessed by consuming a frame prefix.
-        if (version == 2 && (await ReadAvailable(stream, header.AsMemory(64, 4), idleTimeout, cancellationToken).ConfigureAwait(false) != 4 ||
+        if (version is < 1 or > 3) throw new InvalidDataException("Unsupported native capture version.");
+        // v1 had a 64-byte header; v2 adds a checksum; v3 adds checked method-reversion statuses.
+        if (version >= 2 && (await ReadAvailable(stream, header.AsMemory(64, 4), idleTimeout, cancellationToken).ConfigureAwait(false) != 4 ||
             BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(64)) != Crc32.Compute(header.AsSpan(0, 64))))
             throw new InvalidDataException("Invalid or truncated native header checksum.");
         var r = new Reader(header.AsSpan(12, 52));
@@ -109,7 +109,7 @@ public static class NativeTraceFile
         var process = new NativeProcessInfo(r.Id(int.MaxValue), r.Id(8), (int)version); r.Finish();
         if (frequency != 1_000_000_000 || utc > DateTime.MaxValue.Ticks || session == Guid.Empty || process.PointerBytes != 8)
             throw new InvalidDataException("Invalid native source clock or identity.");
-        var state = new State(session, frequency, origin, utc, idleTimeout is not null) { Bytes = version == 2 ? HeaderBytes : 64 };
+        var state = new State(session, frequency, origin, utc, idleTimeout is not null, version) { Bytes = version >= 2 ? HeaderBytes : 64 };
         await consume(state.Block(symbols: [state.Symbol(process)])).ConfigureAwait(false);
         var truncated = false;
         while (true)

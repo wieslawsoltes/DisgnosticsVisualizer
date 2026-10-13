@@ -86,7 +86,7 @@ public sealed class NativeCaptureIndex
     }
     public static string Status(int? status) => status switch
     {
-        0 => "Discovered", 1 => "ReJIT requested", 2 => "IL supplied", -1 => "Not eligible IL", -2 => "Request failed", -3 => "ReJIT failed", -4 => "Rewrite failed",
+        0 => "Discovered", 1 => "ReJIT requested", 2 => "IL supplied", 3 => "Reverted for future calls", -8 => "Revert failed", -1 => "Not eligible IL", -2 => "Request failed", -3 => "ReJIT failed", -4 => "Rewrite failed",
         -5 => "Unsupported shape/budget", -6 => "IL/map submission failed", -7 => "Contained native failure", _ => "Status unavailable"
     };
 }

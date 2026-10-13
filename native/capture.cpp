@@ -107,7 +107,7 @@ bool Recorder::Open() {
     if (fd<0) return false; file_=fdopen(fd,"wb"); if (!file_) { close(fd); return false; }
 #endif
     std::vector<uint8_t> header{'D','V','N','T','R','C','0','1'};
-    Append32(header,2); Append32(header,0); Append64(header,1000000000); Append64(header,origin); Append64(header,config.utcTicks);
+    Append32(header,3); Append32(header,0); Append64(header,1000000000); Append64(header,origin); Append64(header,config.utcTicks);
     header.insert(header.end(),config.session.begin(),config.session.end());
 #ifdef _WIN32
     Append32(header,GetCurrentProcessId());

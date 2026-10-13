@@ -12,7 +12,7 @@ public sealed class NativeCaptureControl : UserControl
 {
     private readonly TextBlock _summary = new() { Margin = new(12), TextWrapping = TextWrapping.Wrap, FontSize = 12, LineHeight = 22 };
     private readonly TextBox _filter = new() { Watermark = "Find native-profiled method…", MaxLength = 512, Margin = new(10, 4), MinWidth = 180, FontSize = 11 };
-    private readonly DataGrid _methods = DiagnosticGrid.Create(("Selected method", "Method", -1), ("Status", "Status", 160), ("ReJITs", "Compilations", 75),
+    private readonly DataGrid _methods = DiagnosticGrid.Create(("Selected method", "Method", -1), ("Status", "Status", 190), ("ReJITs", "Compilations", 75),
         ("Paired spans", "Completions", 105), ("Unwound", "Unwound", 90), ("Open", "UnmatchedEntries", 65), ("Total ms", "TotalMs", 100), ("HRESULT", "Error", 105), ("Original MVID / token", "MethodIdentity", 300));
     private readonly DataGrid _threads = DiagnosticGrid.Create(("Native slot", "Slot", 110), ("Operating-system thread ID (not managed ID)", "OsThreadId", -1));
     private NativeCaptureIndex? _index;
@@ -58,7 +58,9 @@ public sealed class NativeCaptureControl : UserControl
             $"{index.PairedSpans:N0} paired spans · {index.UnmatchedEntries:N0} unmatched entries · {index.UnmatchedCompletions:N0} unmatched completions · {index.InvalidGroups:N0} invalid groups\n" +
             (index.End is { HasFooter: true } end ? $"Terminal status: {StopReason(end.Reason)} · {end.DroppedRecords:N0} drops · {end.RecorderFaults:N0} recorder faults · {end.IoFaults:N0} I/O faults · {end.RejitErrors:N0} ReJIT errors\n" : "Terminal integrity is UNKNOWN: no complete footer was retained.\n") +
             (index.Incomplete ? "Incomplete coverage; missing observations cannot establish that a call did not occur. " : "Complete terminal metadata for this retained capture. ") +
-            "IL supplied is not execution proof. Stopping capture does not unload/revert the profiler; disabled probes remain until process exit.";
+            (process.FormatVersion >= 3
+                ? "Reverted means the CLR accepted original IL for future calls, not that old active frames ended. The profiler library stays loaded; inliner optimization is not restored by this status."
+                : "IL supplied is not execution proof. This older recorder does not revert on stop; disabled probes remain until process exit.");
         Refresh();
     }
     private void Refresh()
