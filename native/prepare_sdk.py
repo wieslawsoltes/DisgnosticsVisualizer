@@ -29,3 +29,11 @@ text=text.replace(needle,'''    // DiagnosticsVisualizer extension: explicit out
     }
     HRESULT Export();''')
 p.write_text(text)
+# The sample uses ULONG locals with the newer uint32_t* signature helper. These
+# are distinct C++ types on Windows despite both being 32 bits; use the declared
+# API type rather than aliasing a pointer. Only the already verified copy changes.
+p=out/'ilrewriter.cpp';text=p.read_text()
+for declaration in ('ULONG cOrigLocals;', 'ULONG cbOrigLocals;'):
+    assert text.count(declaration)==1
+    text=text.replace(declaration,declaration.replace('ULONG','uint32_t'))
+p.write_text(text)
