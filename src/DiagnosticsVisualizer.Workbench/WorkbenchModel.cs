@@ -37,6 +37,7 @@ public sealed partial class WorkbenchModel : INotifyPropertyChanged, IAsyncDispo
     public string Error { get => _error; private set => Set(ref _error, value); }
     public bool Recording { get => _recording; private set => Set(ref _recording, value); }
     public bool IsDemo { get => _isDemo; private set => Set(ref _isDemo, value); }
+    public bool SupportsRecordingControl => Trace?.NativeMetadata.Count is not > 0;
     public bool Connected => _connection is not null || _localCommand is not null;
     public long SelectedObjectId => _selectedObject;
     public long SelectedEventId => _selectedEvent;
@@ -59,6 +60,15 @@ public sealed partial class WorkbenchModel : INotifyPropertyChanged, IAsyncDispo
         Apply(_store.GetView(), TraceAnalyzer.Analyze(_store.GetView())); SelectObject(5, false);
         var candidate = Trace?.Events.FirstOrDefault(e => e.Subsystem == Subsystem.Properties && e.ObjectId == 5);
         if (candidate is { Id: not 0 } selected) SelectEvent(selected.Id, false);
+    }
+    public void LoadNativeDemo()
+    {
+        if (Connected) { ReportError("Disconnect before replacing a live session with an example."); return; }
+        ResetReview(); Interlocked.Increment(ref _generation); _store = new(500_000);
+        foreach (var block in DemoTraceFactory.CreateNative()) _store.Add(block);
+        IsDemo = true; Source = "DEMO · synthetic native method recording"; Status = "Offline native example · no process is attached"; Error = "";
+        var trace = _store.GetView(); Apply(trace, TraceAnalyzer.Analyze(trace));
+        SelectEvent(trace.Events.First(e => e.Kind == TraceEventKind.Span).Id, false);
     }
     public async Task ConnectAsync(Uri endpoint, string token)
     {
@@ -132,7 +142,7 @@ public sealed partial class WorkbenchModel : INotifyPropertyChanged, IAsyncDispo
     {
         await DisconnectAsync(); ResetReview(); Status = "Reading and validating trace…"; Error = "";
         var store = new TraceStore(500_000); var generation = Interlocked.Increment(ref _generation);
-        var result = await TraceFile.ReadAsync(stream, block => { store.Add(block); return ValueTask.CompletedTask; }, true, cancellationToken);
+        var result = await TraceImport.ReadAsync(stream, block => { store.Add(block); return ValueTask.CompletedTask; }, true, cancellationToken);
         var prepared = await Task.Run(() => { var view = store.GetView(); return Prepare(view); }, cancellationToken);
         if (generation != _generation) return;
         _store = store; IsDemo = false; Source = $"FILE · {name}"; Apply(prepared.view, prepared.analysis, prepared.index, prepared.profile, prepared.selected, prepared.range);
@@ -143,7 +153,7 @@ public sealed partial class WorkbenchModel : INotifyPropertyChanged, IAsyncDispo
     public async Task CompareAsync(Stream baseline, CancellationToken cancellationToken = default)
     {
         if (Analysis is null) throw new InvalidOperationException("Open a current trace first.");
-        var store = new TraceStore(500_000); await TraceFile.ReadAsync(baseline, block => { store.Add(block); return ValueTask.CompletedTask; }, true, cancellationToken);
+        var store = new TraceStore(500_000); await TraceImport.ReadAsync(baseline, block => { store.Add(block); return ValueTask.CompletedTask; }, true, cancellationToken);
         var before = await Task.Run(() => TraceAnalyzer.Analyze(store.GetView()), cancellationToken);
         Comparison = TraceComparison.Compare(before, Analysis); ComparisonUpdated?.Invoke(); Status = "Baseline comparison uses recorded self time; normalize workload before interpreting changes.";
     }
@@ -155,6 +165,7 @@ public sealed partial class WorkbenchModel : INotifyPropertyChanged, IAsyncDispo
     public async Task ToggleRecordingAsync()
     {
         if (!Connected) { ReportError("Connect to an instrumented target to start or pause recording."); return; }
+        if (!SupportsRecordingControl) { ReportError("Native capture uses its configured duration; pause/resume is not supported by this recorder."); return; }
         await SendCommandAsync(Recording ? CommandKind.Pause : CommandKind.Resume);
     }
     public Task RequestSnapshotAsync() => SendCommandAsync(CommandKind.RequestSnapshot, _selectedObject);

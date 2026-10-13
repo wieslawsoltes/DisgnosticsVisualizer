@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
-    <Version Condition="'$(Version)' == ''">0.1.0-alpha.13</Version>
+    <Version Condition="'$(Version)' == ''">0.1.0-alpha.14</Version>
     <Authors>Wiesław Šoltés</Authors>
     <RepositoryUrl>https://github.com/wieslawsoltes/DisgnosticsVisualizer</RepositoryUrl>
     <RepositoryType>git</RepositoryType>

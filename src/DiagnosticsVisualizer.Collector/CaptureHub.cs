@@ -10,6 +10,7 @@ public sealed class CaptureHub(CollectorOptions options, ILogger<CaptureHub> log
 {
     private sealed class Viewer(IFrameConnection connection)
     {
+        public byte[][] Bootstrap = [];
         public readonly Guid Id = Guid.NewGuid();
         public readonly IFrameConnection Connection = connection;
         public readonly FrameQueue Queue = new(64, 16 * 1024 * 1024);
@@ -24,6 +25,7 @@ public sealed class CaptureHub(CollectorOptions options, ILogger<CaptureHub> log
     private readonly Queue<QueuedFrame> _history = new();
     private readonly ConcurrentDictionary<long, Pending> _requests = new();
     private IFrameConnection? _producer;
+    private readonly NativeBootstrapCache _nativeBootstrap = new();
     private Guid _session;
     private long _historyBytes, _requestId, _frames, _archiveBytes;
     private byte[]? _checkpoint;
@@ -88,6 +90,7 @@ public sealed class CaptureHub(CollectorOptions options, ILogger<CaptureHub> log
         lock (_gate)
         {
             if (_viewers.Count >= options.MaxViewers) throw new InvalidOperationException("Collector viewer limit reached.");
+            viewer.Bootstrap = _nativeBootstrap.Snapshot();
             _viewers.Add(viewer);
             if (_checkpoint is not null) Enqueue(viewer, _checkpoint, true);
             long copied = 0;
@@ -109,6 +112,8 @@ public sealed class CaptureHub(CollectorOptions options, ILogger<CaptureHub> log
     }
     private static async Task SendViewerAsync(Viewer viewer, CancellationToken cancellationToken)
     {
+        foreach (var frame in viewer.Bootstrap) await viewer.Connection.SendAsync(frame, cancellationToken).ConfigureAwait(false);
+        viewer.Bootstrap = [];
         var encoder = new TraceStreamEncoder();
         await foreach (var packet in viewer.Queue.ReadPacketsAsync(cancellationToken).ConfigureAwait(false))
         {
@@ -173,6 +178,7 @@ public sealed class CaptureHub(CollectorOptions options, ILogger<CaptureHub> log
                     try { _datagrams = new(_session, key); }
                     finally { System.Security.Cryptography.CryptographicOperations.ZeroMemory(key); }
                 }
+                _nativeBootstrap.Observe(block, frame);
                 if (block.Snapshot is not null) _checkpoint = frame;
                 _history.Enqueue(new(frame, block.Snapshot is not null)); _historyBytes += frame.Length;
                 while (_historyBytes > 32 * 1024 * 1024 || _history.Count > 2048) _historyBytes -= _history.Dequeue().Bytes.Length;

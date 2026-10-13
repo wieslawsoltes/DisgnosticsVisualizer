@@ -1,0 +1,4 @@
+LIBRARY DiagnosticsVisualizerProfiler
+EXPORTS
+    DllGetClassObject
+    DllCanUnloadNow

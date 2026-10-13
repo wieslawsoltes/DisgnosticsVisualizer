@@ -186,7 +186,8 @@ public sealed partial class WorkbenchView
         finally { _historyUpdating = false; }
         SelectCheckpoint();
         _captureHealth.Text = $"RECORDING INTEGRITY\n\n{trace.Events.Length:N0} retained events\n{trace.DroppedEvents:N0} producer drops\n{trace.MissingBlocks:N0} missing batches\n{trace.ProbeFaults:N0} probe faults\n{trace.MetadataDrops:N0} metadata drops\n{trace.EvictedEvents:N0} viewer evictions\n{trace.Checkpoints.Length:N0} retained checkpoints\n\n" +
-            "Managed spans measure elapsed time and can include waits; they are not CPU utilization or GPU completion. Missing spans make self-time estimates incomplete.\n\n" +
+            (trace.NativeMetadata.Count == 0 ? "Managed capture. " : "NATIVE CLR CAPTURE · thread IDs in charts are recorder slots; Native CLR lists OS IDs. ") +
+            "Recorded spans measure elapsed time and can include waits; they are not CPU utilization or GPU completion. Missing spans make self-time estimates incomplete.\n\n" +
             (_model.IsDemo ? "SYNTHETIC DEMONSTRATION\nNo application is connected." : $"Session: {trace.SessionId}\nClock: {trace.Frequency:N0} ticks/second");
     }
     private void RegisterProfilingCommands()

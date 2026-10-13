@@ -1,0 +1,81 @@
+name: Native CLR attachment
+on:
+  push:
+    branches: [main]
+    paths: ['native/**', 'tools/NativeCapture/**', 'tests/DiagnosticsVisualizer.NativeFixture/**', 'tests/DiagnosticsVisualizer.NativeImportValidation/**', 'src/DiagnosticsVisualizer.Protocol/**', 'src/DiagnosticsVisualizer.Transport/**', 'src/DiagnosticsVisualizer.Analysis/**', 'src/DiagnosticsVisualizer.Core/**', 'src/DiagnosticsVisualizer.Collector/**', '.github/workflows/native.yml']
+  pull_request:
+    paths: ['native/**', 'tools/NativeCapture/**', 'tests/DiagnosticsVisualizer.NativeFixture/**', 'tests/DiagnosticsVisualizer.NativeImportValidation/**', 'src/DiagnosticsVisualizer.Protocol/**', 'src/DiagnosticsVisualizer.Transport/**', 'src/DiagnosticsVisualizer.Analysis/**', 'src/DiagnosticsVisualizer.Core/**', 'src/DiagnosticsVisualizer.Collector/**', '.github/workflows/native.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: dotnet/runtime
+          ref: 60629d14374c56f1cb51819049ad1fa529307f8d
+          path: artifacts/runtime-sdk
+          sparse-checkout: |
+            src/coreclr/inc
+            src/coreclr/pal/inc
+            src/coreclr/pal/prebuilt/inc
+            src/native/minipal
+            src/tests/profiler/native
+            LICENSE.TXT
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Verify portable late-join frame selection
+        shell: bash
+        run: python native/test_streaming_fixture.py
+      - name: Compile native profiler against pinned public SDK
+        shell: bash
+        run: |
+          cmake -S native -B artifacts/native-build -DCMAKE_BUILD_TYPE=Release -DRUNTIME_SDK_ROOT="$PWD/artifacts/runtime-sdk"
+          cmake --build artifacts/native-build --config Release --parallel 2
+      - name: Build attach client and unmodified target
+        shell: bash
+        run: |
+          dotnet build tools/NativeCapture -c Release
+          dotnet build tests/DiagnosticsVisualizer.NativeFixture -c Release
+          dotnet build tests/DiagnosticsVisualizer.NativeImportValidation -c Release
+          dotnet build src/DiagnosticsVisualizer.Collector -c Release
+      - name: Attach to already running CLR and validate rewritten behavior
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == Windows ]]; then LIB="$PWD/artifacts/native-build/Release/DiagnosticsVisualizerProfiler.dll";
+          elif [[ "$RUNNER_OS" == macOS ]]; then LIB="$PWD/artifacts/native-build/libDiagnosticsVisualizerProfiler.dylib";
+          else LIB="$PWD/artifacts/native-build/libDiagnosticsVisualizerProfiler.so"; fi
+          python native/smoke.py "$LIB"
+          python native/relay_smoke.py "$LIB"
+          python native/validate_streaming.py
+      - name: Stage native redistributable with dependency attribution
+        if: success()
+        shell: bash
+        run: |
+          mkdir -p artifacts/native-package
+          find artifacts/native-build -type f \( -name '*DiagnosticsVisualizerProfiler.dll' -o -name '*DiagnosticsVisualizerProfiler.so' -o -name '*DiagnosticsVisualizerProfiler.dylib' \) -exec cp {} artifacts/native-package/ \;
+          cp native/README.md artifacts/native-package/
+          cp artifacts/runtime-sdk/LICENSE.TXT artifacts/native-package/DOTNET-LICENSE.txt
+          cp LICENSE artifacts/native-package/LICENSE.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-evidence-${{ matrix.os }}
+          path: |
+            artifacts/native/*.json
+            artifacts/native/*.log
+            artifacts/native-package/
+            artifacts/native/converted.avtrace
+            artifacts/native-relay/*.json
+            artifacts/native-relay/*.log
+          retention-days: 14

@@ -4,7 +4,29 @@ Cross-subsystem Avalonia recording, analysis and a shared desktop/WebAssembly Ri
 
 [Browser workbench](https://wieslawsoltes.github.io/DisgnosticsVisualizer/) · [Build and integration](https://github.com/wieslawsoltes/DisgnosticsVisualizer/actions/workflows/build.yml) · [Browser verification and deployment](https://github.com/wieslawsoltes/DisgnosticsVisualizer/actions/workflows/browser.yml)
 
-**0.1.0-alpha.13.** The browser starts with an explicitly labelled synthetic example, not a live attachment. This is an actively validated implementation, not a claim that every Avalonia release, native backend or DevTools capability is covered. Check workflow results for deployment status.
+**0.1.0-alpha.14.** The browser starts with an explicitly labelled synthetic example, not a live attachment. This is an actively validated implementation, not a claim that every Avalonia release, native backend or DevTools capability is covered. Check workflow results for deployment status.
+
+## New in alpha.14: native CLR capture and streaming inspection
+
+The optional native profiler attaches to an already running authorized .NET process,
+ReJITs explicitly selected methods and records normal returns and exceptional unwinds
+without editing assemblies on disk. Windows, Linux and macOS share the checked runtime
+SDK adapter. This method-level path is separate from build-time Avalonia semantic weaving.
+
+Open native `.dvntrace` files directly in desktop or browser. The **Native** docking preset
+shows coverage, original method identities, thread-slot/OS-thread mapping and terminal
+integrity, with explicit open/incomplete calls. Native provenance and UTC origin survive
+binary export. The shared Rider layout remains isolated from an embedding application.
+
+`NativeCapture relay` provides authenticated TCP/TLS forwarding of an append-only recording,
+bounded reconnect replay, late-join metadata and explicit unsupported-control replies. The
+browser uses the existing WebSocket gateway. `inspect` and atomic `convert` commands also
+work without attaching a process. See [native build, commands and limits](native/README.md).
+
+GPU timing/counters, exhaustive custom scheduler and XAML setter/candidate mappings remain
+outside this release. Stopping native capture does **not** detach/revert the profiler. The
+native binaries are workflow artifacts; the ten reusable NuGet packages remain separately
+published through the existing trusted-publishing workflow.
 
 ## New: property operations and value history
 
@@ -12,9 +34,13 @@ Cross-subsystem Avalonia recording, analysis and a shared desktop/WebAssembly Ri
 
 Values remain private by default. `AVTRACE_PROPERTY_SCALARS=1` independently permits Boolean/integer/float/double payloads; strings and arbitrary structs remain redacted. `Workspace: Properties` and `Show Property history` expose searchable histories, resizable panels, selected-call/identity/source navigation and a **discrete notification chart**, not interpolated state. See [property-history contracts and validation](docs/property-history.md).
 
+### Native viewer and sidecar development increment
+
+Native `.dvntrace` files now open in the shared desktop/browser model, retain typed provenance on export, and have a Rider **Native** coverage preset. `NativeCapture convert` creates a standard recording; `NativeCapture relay` follows a native file over authenticated TCP/TLS with bounded, content-checked reconnect replay. The collector retains native metadata for late viewers independently from its event tail. [Usage, measurement contracts and remaining capabilities](docs/native-viewer-sidecar.md).
+
 ## Workbench and recorded semantics
 
-The actual **Dock Rider Dark compact** theme is scoped to diagnostics and detached documents, without forcing an embedding application into dark mode. Shared tabbing, splitting, pinning, managed/native floating windows and persistent workspace topology support Inspect, Profile, Compare, Investigate, Resources, Styling and Properties presets. Existing layouts survive added documents. Invalid, oversized or duplicate layouts are rejected before live mutation; settings contain panel identities/geometry, not trace data or tokens.
+The actual **Dock Rider Dark compact** theme is scoped to diagnostics and detached documents, without forcing an embedding application into dark mode. Shared tabbing, splitting, pinning, managed/native floating windows and persistent workspace topology support Inspect, Profile, Compare, Investigate, Resources, Styling, Properties and Native presets. Existing layouts survive added documents. Invalid, oversized or duplicate layouts are rejected before live mutation; settings contain panel identities/geometry, not trace data or tokens.
 
 Synchronized subsystem timelines/thread flame charts, causal chains, latency statistics, top-down/bottom-up calling contexts, thread span coverage, baseline comparison, independent visual/logical trees, property/precedence/resource inspection, layout scenes, checkpoint differences, bookmarks, capture health and queryable event logs share selection and navigation history.
 
@@ -69,7 +95,7 @@ Run `bash eng/pack.sh` to build the local feed. Until NuGet.org publication, add
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="DiagnosticsVisualizer.Build" Version="0.1.0-alpha.13" />
+  <PackageReference Include="DiagnosticsVisualizer.Build" Version="0.1.0-alpha.14" />
 </ItemGroup>
 ```
 
@@ -128,7 +154,7 @@ The reproducible ingestion benchmark validates output checksums and retained/evi
 
 ## Remaining boundaries and publishing
 
-Native CLR profiler/ReJIT attachment, GPU timestamp/counter backends, complete custom-scheduler causality, exhaustive private semantic coverage and complete XAML setter/element mappings remain separate work. The current property history observes supported mutation/notification paths; it does not reconstruct every property-store candidate or prove a global winner at every moment.
+GPU timestamp/counter backends, complete custom-scheduler causality, exhaustive private semantic coverage and complete XAML setter/element mappings remain separate work. The current property history observes supported mutation/notification paths; it does not reconstruct every property-store candidate or prove a global winner at every moment.
 
 Pages deployment follows browser validation on `main`. `release.yml` builds, tests, packages and checks integration before **NuGet trusted publishing** through `NuGet/login@v1` and GitHub OIDC. Register the NuGet policy for owner `wieslawsoltes`, repository `DisgnosticsVisualizer`, workflow `release.yml`, environment `nuget`, and configure `NUGET_USER`. This workflow cannot create the account-side publisher policy. Package validation is not a claim of NuGet.org upload.
 

@@ -1,3 +1,4 @@
+using DiagnosticsVisualizer.Workbench.Persistence;
 using DiagnosticsVisualizer.Analysis;
 using DiagnosticsVisualizer.Controls;
 using DiagnosticsVisualizer.Core;
@@ -19,10 +20,21 @@ public sealed partial class WorkbenchView
     private readonly DispatcherOperationsControl _dispatcher = new();
     private readonly XamlOriginsControl _xaml = new();
     private XamlSourceIndex? _xamlIndex;
+    private readonly NativeCaptureControl _nativeCapture = new();
+    public void ShowNativeCapture() => _factory.Activate("native");
     public void ShowDispatcher() => _factory.Activate("dispatcher");
     public void ShowXamlOrigins() => _factory.Activate("xaml");
     private void InitializeInvestigation()
     {
+        _commands.Add(("Open synthetic native example", "", () => { _model.LoadNativeDemo(); ApplyWorkspacePreset(WorkspacePreset.Native); return Task.CompletedTask; }));
+        _commands.Add(("Show Native CLR capture", "", () => { ShowNativeCapture(); return Task.CompletedTask; }));
+        _commands.Add(("Show Native CLR", "", () => { ShowNativeCapture(); return Task.CompletedTask; }));
+        _nativeCapture.EventSelected += id => _model.SelectEvent(id, false);
+        _nativeCapture.DefinitionSourceRequested += id =>
+        {
+            if (_model.Trace is not { } trace) return;
+            ShowSources(); _sources.InspectSite(trace, id);
+        };
         _factory.RegisterDocument("property-history", "Property history", _propertyHistory);
         _commands.Add(("Show Property history", "", () => { ShowPropertyHistory(); _propertyHistory.ShowHistory(); return Task.CompletedTask; }));
         _propertyHistory.EventSelected += id => _model.SelectEvent(id, false);
@@ -59,6 +71,7 @@ public sealed partial class WorkbenchView
     }
     private void UpdateInvestigation(TraceView trace, AnalysisResult analysis)
     {
+        _nativeCapture.SetTrace(trace, analysis.NativeCapture);
         _propertyHistory.SetTrace(trace, analysis.PropertyOperations ?? new(trace));
         _bindings.SetTrace(trace, analysis.BindingOperations ?? new(trace));
         _routed.SetTrace(trace, analysis.RoutedDispatches);

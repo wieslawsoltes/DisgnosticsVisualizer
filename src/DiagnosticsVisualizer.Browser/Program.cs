@@ -55,6 +55,8 @@ public static partial class Program
         var eventGrid = visuals.OfType<DataGrid>().FirstOrDefault(grid => grid.Name == "EventsGrid");
         return JsonSerializer.Serialize(new
         {
+            nativePairs = model?.Analysis?.NativeCapture?.PairedSpans ?? 0,
+            nativeCaptureVisible = visuals.OfType<NativeCaptureControl>().Any(c => c.IsEffectivelyVisible),
             propertyOperations = model?.Analysis?.PropertyOperations?.Calls.Length ?? 0,
             propertyHistoryVisible = visuals.OfType<PropertyHistoryControl>().Any(c => c.IsEffectivelyVisible),
             ready = view is not null, events = model?.Trace?.Events.Length ?? 0,
@@ -82,6 +84,9 @@ public static partial class Program
             hasRange = model?.Range is not null, workspacePreset = view?.WorkspacePresetName, workspaceError = view?.WorkspaceError,
             profileOperations = model?.Profile?.Operations.Length ?? 0, checkpoints = model?.Trace?.Checkpoints.Length ?? 0,
             rangeEvents = model?.Profile?.Events ?? 0, queryError = model?.QueryError,
+            nativeMethods = model?.Analysis?.NativeCapture?.Methods.Length ?? 0,
+            nativePairedSpans = model?.Analysis?.NativeCapture?.PairedSpans ?? 0,
+            nativeInvalidGroups = model?.Analysis?.NativeCapture?.InvalidGroups ?? 0,
             source = model?.Source ?? "Starting", error = model?.Error ?? ""
         });
     }

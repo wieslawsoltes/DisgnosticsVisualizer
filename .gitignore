@@ -11,3 +11,7 @@ artifacts/
 .env
 
 **/TestResults/
+
+# Python validation scripts
+__pycache__/
+*.py[cod]

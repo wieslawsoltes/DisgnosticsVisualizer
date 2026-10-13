@@ -69,7 +69,10 @@ public sealed class SourceExplorer : UserControl
         };
     }
 
-    public void Inspect(TraceView trace, TraceEvent? selected)
+    public void Inspect(TraceView trace, TraceEvent? selected) => InspectSite(trace, selected?.NameId ?? 0);
+
+    /// <summary>Reveals recorded definition metadata without inventing an execution event.</summary>
+    public void InspectSite(TraceView trace, int siteId)
     {
         if (!ReferenceEquals(_trace, trace))
         {
@@ -78,8 +81,8 @@ public sealed class SourceExplorer : UserControl
                 .ThenBy(p => p.Value.Signature, StringComparer.Ordinal).Select(p => new SourceRow(p.Key, p.Value)).ToArray();
             _sites.ItemsSource = _rows;
         }
-        _sites.SelectedItem = selected is { } e ? _rows.FirstOrDefault(r => r.SiteId == e.NameId) : null;
-        Select(selected is { } ev ? trace.SourceSites.GetValueOrDefault(ev.NameId) : null);
+        _sites.SelectedItem = _rows.FirstOrDefault(r => r.SiteId == siteId);
+        Select(trace.SourceSites.GetValueOrDefault(siteId));
         RevealSite();
     }
 
