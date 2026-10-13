@@ -45,6 +45,7 @@ jobs:
           python3 tests/browser/native-fixture.py
           node tests/browser/native.mjs
           node tests/browser/native-demo.mjs
+          node tests/browser/gpu.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:

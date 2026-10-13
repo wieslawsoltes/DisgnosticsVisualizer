@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><IsPackable>false</IsPackable></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Skia" Version="$(AvaloniaVersion)" />
+    <PackageReference Include="DiagnosticsVisualizer.Build" Version="$(Version)" Condition="'$(UsePackagedDiagnostics)' == 'true'" />
+    <ProjectReference Include="../../src/DiagnosticsVisualizer.Agent.Avalonia/DiagnosticsVisualizer.Agent.Avalonia.csproj" Condition="'$(UsePackagedDiagnostics)' != 'true'" />
+  </ItemGroup>
+</Project>

@@ -28,6 +28,8 @@ public sealed record CaptureOptions
     public bool TrackPropertyOperations { get; init; }
     /// <summary>Separate privacy opt-in for primitive numeric/Boolean bits; never captures text or arbitrary structs.</summary>
     public bool CapturePropertyScalars { get; init; }
+    /// <summary>Opt-in asynchronous device-clock query observations; CPU and GPU clocks stay separate.</summary>
+    public bool TrackGpuTimings { get; init; }
     public int SampleEvery { get; init; } = 1;
     public ulong SubsystemMask { get; init; } = ulong.MaxValue;
     /// <summary>Parse bounded startup settings once, never on a producer's hot path.</summary>
@@ -75,7 +77,8 @@ public sealed record CaptureOptions
             TrackStyleEvaluations = Boolean("AVTRACE_STYLE_EVALUATIONS"),
             TrackBindingOperations = Boolean("AVTRACE_BINDING_OPERATIONS"),
             TrackPropertyOperations = Boolean("AVTRACE_PROPERTY_OPERATIONS"),
-            CapturePropertyScalars = Boolean("AVTRACE_PROPERTY_SCALARS")
+            CapturePropertyScalars = Boolean("AVTRACE_PROPERTY_SCALARS"),
+            TrackGpuTimings = Boolean("AVTRACE_GPU_TIMINGS")
         };
         options.Validate(); return options;
     }

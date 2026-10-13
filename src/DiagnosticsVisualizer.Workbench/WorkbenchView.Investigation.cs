@@ -20,12 +20,19 @@ public sealed partial class WorkbenchView
     private readonly DispatcherOperationsControl _dispatcher = new();
     private readonly XamlOriginsControl _xaml = new();
     private XamlSourceIndex? _xamlIndex;
+    private readonly GpuTimingsControl _gpuTimings = new();
+    public void ShowGpuTimings() => _factory.Activate("gpu");
     private readonly NativeCaptureControl _nativeCapture = new();
     public void ShowNativeCapture() => _factory.Activate("native");
     public void ShowDispatcher() => _factory.Activate("dispatcher");
     public void ShowXamlOrigins() => _factory.Activate("xaml");
     private void InitializeInvestigation()
     {
+        _factory.RegisterDocument("gpu", "GPU timings", _gpuTimings);
+        _commands.Add(("Show GPU timings", "", () => { ShowGpuTimings(); return Task.CompletedTask; }));
+        _commands.Add(("Open synthetic GPU example", "", () => { _model.LoadGpuDemo(); ApplyWorkspacePreset(WorkspacePreset.Gpu); return Task.CompletedTask; }));
+        _gpuTimings.EventSelected += id => _model.SelectEvent(id, false);
+        _gpuTimings.RangeRequested += async range => await RunAsync(() => _model.SetRangeAsync(range));
         _commands.Add(("Open synthetic native example", "", () => { _model.LoadNativeDemo(); ApplyWorkspacePreset(WorkspacePreset.Native); return Task.CompletedTask; }));
         _commands.Add(("Show Native CLR capture", "", () => { ShowNativeCapture(); return Task.CompletedTask; }));
         _commands.Add(("Show Native CLR", "", () => { ShowNativeCapture(); return Task.CompletedTask; }));
@@ -71,6 +78,7 @@ public sealed partial class WorkbenchView
     }
     private void UpdateInvestigation(TraceView trace, AnalysisResult analysis)
     {
+        _gpuTimings.SetTrace(trace, analysis.GpuTimings ?? new(trace));
         _nativeCapture.SetTrace(trace, analysis.NativeCapture);
         _propertyHistory.SetTrace(trace, analysis.PropertyOperations ?? new(trace));
         _bindings.SetTrace(trace, analysis.BindingOperations ?? new(trace));
@@ -81,7 +89,7 @@ public sealed partial class WorkbenchView
     }
     private void SelectInvestigation(TraceView trace, TraceEvent? selected, long objectId)
     {
-        _propertyHistory.SelectEvent(selected); _bindings.SelectEvent(selected); _routed.SelectEvent(selected); _styleEvaluations.SelectEvent(selected); _resourceLookups.SelectEvent(selected);
+        _gpuTimings.SelectEvent(selected); _propertyHistory.SelectEvent(selected); _bindings.SelectEvent(selected); _routed.SelectEvent(selected); _styleEvaluations.SelectEvent(selected); _resourceLookups.SelectEvent(selected);
         if (_xamlIndex is null) _xamlIndex = new(trace);
         _xaml.Inspect(_xamlIndex, objectId);
         _sources.Inspect(trace, selected ?? _xamlIndex.Find(objectId)?.Event);

@@ -23,6 +23,7 @@ public sealed class CaptureSession : IDisposable
     private long _nextObject, _blockSequence, _drops, _faults, _metadataDrops;
     private int _nextSymbol, _nextWriter, _enabled = 1, _disposed, _drainStart;
     private SnapshotData? _snapshot;
+    internal WeakReference<CaptureSession> GpuWeakReference { get; }
     public Guid Id { get; } = Guid.NewGuid();
     public long OriginTimestamp { get; } = Stopwatch.GetTimestamp();
     public long UtcStartTicks { get; } = DateTime.UtcNow.Ticks;
@@ -33,6 +34,7 @@ public sealed class CaptureSession : IDisposable
     public long MetadataDrops => Interlocked.Read(ref _metadataDrops);
     public CaptureSession(CaptureOptions? options = null)
     {
+        GpuWeakReference = new(this);
         Options = options ?? new(); Options.Validate(); _createIdentity = CreateIdentity;
         _local = new ThreadLocal<CaptureWriter?>(() =>
         {

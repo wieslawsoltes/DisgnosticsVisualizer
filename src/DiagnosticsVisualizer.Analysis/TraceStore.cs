@@ -13,6 +13,7 @@ public sealed record TraceView(Guid SessionId, long Frequency, long OriginTimest
 {
     /// <summary>UTC anchor from the first accepted block; legacy producers can timestamp later blocks independently.</summary>
     public long UtcStartTicks { get; init; }
+    public IReadOnlyDictionary<int, GpuTimingSite> GpuSites { get; init; } = new Dictionary<int, GpuTimingSite>();
     public IReadOnlyDictionary<int, SourceSite> SourceSites { get; init; } = new Dictionary<int, SourceSite>();
     public IReadOnlyDictionary<(int Kind, int Key), NativeMetadata> NativeMetadata { get; init; } = new Dictionary<(int, int), NativeMetadata>();
     public SnapshotCheckpoint[] Checkpoints { get; init; } = [];
@@ -27,6 +28,8 @@ public sealed class TraceStore
     private readonly RetainedEventIndex _events;
     private readonly TraceSequenceLedger _sequences;
     private readonly Dictionary<int, string> _symbols = [], _displaySymbols = [];
+    private readonly Dictionary<int, GpuTimingSite> _gpuSites = [];
+    private IReadOnlyDictionary<int, GpuTimingSite>? _publishedGpuSites;
     private readonly Dictionary<int, SourceSite> _sourceSites = [];
     private readonly HashSet<int> _integritySymbols = [];
     private readonly HashSet<int> _nativeSymbols = [];
@@ -92,6 +95,9 @@ public sealed class TraceStore
             if (native.Count != 0 && (_native.Keys.Concat(native.Values.Select(n => (n.Kind, n.Key))).Distinct().Count() > NativeMetadataSymbol.MaximumEntries ||
                 native.Count != 0 && _symbols.Count + block.Symbols.Count(s => !_symbols.ContainsKey(s.Id)) > 1_000_000))
                 throw new InvalidDataException("Native provenance capacity exceeded.");
+            foreach (var symbol in block.Symbols)
+                if (symbol.Name.StartsWith(GpuTimingSymbol.Prefix, StringComparison.Ordinal) && !GpuTimingSymbol.TryDecode(symbol.Name, out _))
+                    throw new InvalidDataException("Invalid GPU timestamp metadata.");
             if (!_sequences.TryAccept(block.Sequence)) return;
             foreach (var (id, entry) in native)
             {
@@ -111,6 +117,8 @@ public sealed class TraceStore
                         _sourceSites[s.Id] = site!; _displaySymbols[s.Id] = site!.Signature;
                         _publishedSites = null; _publishedSymbols = null;
                     }
+                    else if (GpuTimingSymbol.TryDecode(s.Name, out var gpu))
+                    { _gpuSites[s.Id] = gpu!; _displaySymbols[s.Id] = gpu!.Name; _publishedGpuSites = null; _publishedSymbols = null; }
                     else if (TraceIntegritySymbol.TryDecode(s.Name, out var integrity))
                     {
                         _integritySymbols.Add(s.Id);
@@ -154,7 +162,7 @@ public sealed class TraceStore
             return new(_session, _frequency, _origin, events,
                 _publishedSymbols ??= new ReadOnlyDictionary<int, string>(new Dictionary<int, string>(_displaySymbols)),
                 _publishedObjects ??= new ReadOnlyDictionary<long, ObjectInfo>(new Dictionary<long, ObjectInfo>(_objects)), _snapshot, _drops, TraceIntegritySymbol.SaturatingAdd(missing, _inheritedMissing), _faults,
-                _metadataDrops, TraceIntegritySymbol.SaturatingAdd(_events.Evicted, _inheritedEvicted), _recording) { UtcStartTicks = _utc, NativeMetadata = _publishedNative ??= new ReadOnlyDictionary<(int, int), NativeMetadata>(_native.ToDictionary(p => p.Key, p => p.Value.Value)), Checkpoints = _checkpoints.ToArray(), SourceSites = _publishedSites ??= new ReadOnlyDictionary<int, SourceSite>(new Dictionary<int, SourceSite>(_sourceSites)) };
+                _metadataDrops, TraceIntegritySymbol.SaturatingAdd(_events.Evicted, _inheritedEvicted), _recording) { UtcStartTicks = _utc, GpuSites = _publishedGpuSites ??= new ReadOnlyDictionary<int, GpuTimingSite>(new Dictionary<int, GpuTimingSite>(_gpuSites)), NativeMetadata = _publishedNative ??= new ReadOnlyDictionary<(int, int), NativeMetadata>(_native.ToDictionary(p => p.Key, p => p.Value.Value)), Checkpoints = _checkpoints.ToArray(), SourceSites = _publishedSites ??= new ReadOnlyDictionary<int, SourceSite>(new Dictionary<int, SourceSite>(_sourceSites)) };
         }
     }
 }

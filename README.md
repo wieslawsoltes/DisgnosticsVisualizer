@@ -4,7 +4,13 @@ Cross-subsystem Avalonia recording, analysis and a shared desktop/WebAssembly Ri
 
 [Browser workbench](https://wieslawsoltes.github.io/DisgnosticsVisualizer/) · [Build and integration](https://github.com/wieslawsoltes/DisgnosticsVisualizer/actions/workflows/build.yml) · [Browser verification and deployment](https://github.com/wieslawsoltes/DisgnosticsVisualizer/actions/workflows/browser.yml)
 
-**0.1.0-alpha.16.** The browser starts with an explicitly labelled synthetic example, not a live attachment. This is an actively validated implementation, not a claim that every Avalonia release, native backend or DevTools capability is covered. Check workflow results for deployment status.
+**0.1.0-alpha.17.** The browser starts with an explicitly labelled synthetic example, not a live attachment. This is an actively validated implementation, not a claim that every Avalonia release, native backend or DevTools capability is covered. Check workflow results for deployment status.
+
+## New in alpha.17: GPU timestamps
+
+**GPU timings** records asynchronous desktop OpenGL timestamp queries around supported Skia rendering sessions. Enable `AVTRACE_GPU_TIMINGS=1` on newly instrumented output. Device nanoseconds, CPU submission and CPU readback observations stay separate; no GPU wait, glFinish, error clearing or application query-buffer binding change is introduced. Unsupported/lost/aborted/pending queries retain explicit outcomes.
+
+The shared **Gpu** workspace has a duration-comparison chart, searchable outcome/renderer table, exact selected CPU-submission ranges and recorded provenance. Real packaged EGL/Skia execution is verified on Mesa software rendering; physical GPU performance is not certified. Other graphics APIs and hardware counters remain separate scope. See [GPU timestamp semantics, limits and validation](docs/gpu-timing.md).
 
 ## New in alpha.16: native recording control
 
@@ -35,8 +41,8 @@ bounded reconnect replay, late-join metadata and explicit unsupported-control re
 browser uses the existing WebSocket gateway. `inspect` and atomic `convert` commands also
 work without attaching a process. See [native build, commands and limits](native/README.md).
 
-GPU timing/counters, exhaustive custom scheduler and XAML setter/candidate mappings remain
-outside this release. Stopping native capture does **not** detach the profiler; v3 records the method-reversion results described above. The
+The native attachment path does not itself provide GPU timing, exhaustive custom scheduler
+causality or XAML setter/candidate mappings. Stopping native capture does **not** detach the profiler; v3 records the method-reversion results described above. The
 native binaries are workflow artifacts; the ten reusable NuGet packages remain separately
 published through the existing trusted-publishing workflow.
 
@@ -52,12 +58,13 @@ Native `.dvntrace` files now open in the shared desktop/browser model, retain ty
 
 ## Workbench and recorded semantics
 
-The actual **Dock Rider Dark compact** theme is scoped to diagnostics and detached documents, without forcing an embedding application into dark mode. Shared tabbing, splitting, pinning, managed/native floating windows and persistent workspace topology support Inspect, Profile, Compare, Investigate, Resources, Styling, Properties and Native presets. Existing layouts survive added documents. Invalid, oversized or duplicate layouts are rejected before live mutation; settings contain panel identities/geometry, not trace data or tokens.
+The actual **Dock Rider Dark compact** theme is scoped to diagnostics and detached documents, without forcing an embedding application into dark mode. Shared tabbing, splitting, pinning, managed/native floating windows and persistent workspace topology support Inspect, Profile, Compare, Investigate, Resources, Styling, Properties, Native and Gpu presets. Existing layouts survive added documents. Invalid, oversized or duplicate layouts are rejected before live mutation; settings contain panel identities/geometry, not trace data or tokens.
 
 Synchronized subsystem timelines/thread flame charts, causal chains, latency statistics, top-down/bottom-up calling contexts, thread span coverage, baseline comparison, independent visual/logical trees, property/precedence/resource inspection, layout scenes, checkpoint differences, bookmarks, capture health and queryable event logs share selection and navigation history.
 
 | Investigation | Recorded evidence | Contract |
 | --- | --- | --- |
+| GPU timings | Available device-clock intervals, CPU submission/readback observations and explicit unavailable outcomes | [GPU timestamps](docs/gpu-timing.md) |
 | Properties | Setter attempts, actual notifications, priority, direct/attached/inherited flags and optional scalar history | [Properties](docs/property-history.md) |
 | Bindings | Attachment/start/stop/disposal, node/converter/source writes, publication versus sink delivery, dynamic-resource callbacks | [Bindings](docs/binding-lifecycles.md) |
 | Styling | Selector results, attachment attempts, frame activity/hasChanged and activation signals | [Styling](docs/styling-evaluations.md) |
@@ -107,7 +114,7 @@ Run `bash eng/pack.sh` to build the local feed. Until NuGet.org publication, add
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="DiagnosticsVisualizer.Build" Version="0.1.0-alpha.16" />
+  <PackageReference Include="DiagnosticsVisualizer.Build" Version="0.1.0-alpha.17" />
 </ItemGroup>
 ```
 
@@ -121,7 +128,7 @@ AVTRACE_ENABLED=1 AVTRACE_FILE="$PWD/session.avtrace" \
   dotnet artifacts/instrumented/YourApplication.dll
 ```
 
-The file must not already exist. Bootstrap is inert without `AVTRACE_ENABLED=1`. Semantic options are separately opt-in: `AVTRACE_PROPERTY_OPERATIONS`, `AVTRACE_BINDING_OPERATIONS`, `AVTRACE_STYLE_EVALUATIONS`, `AVTRACE_RESOURCE_LOOKUPS`, `AVTRACE_ROUTED_EVENTS`, `AVTRACE_XAML_OBJECTS`, `AVTRACE_DISPATCHER_OPERATIONS`, `AVTRACE_ASYNC_OPERATIONS`. `AVTRACE_FLOW_EXECUTION_CONTEXT=1` enables automatic context propagation; `AVTRACE_PROPERTY_SCALARS=1` is an independent privacy decision. Other assemblies can be selected through `DiagnosticsIncludeAssemblies`. Keep portable PDBs beside inputs during weaving.
+The file must not already exist. Bootstrap is inert without `AVTRACE_ENABLED=1`. Semantic options are separately opt-in: `AVTRACE_GPU_TIMINGS`, `AVTRACE_PROPERTY_OPERATIONS`, `AVTRACE_BINDING_OPERATIONS`, `AVTRACE_STYLE_EVALUATIONS`, `AVTRACE_RESOURCE_LOOKUPS`, `AVTRACE_ROUTED_EVENTS`, `AVTRACE_XAML_OBJECTS`, `AVTRACE_DISPATCHER_OPERATIONS`, `AVTRACE_ASYNC_OPERATIONS`. `AVTRACE_FLOW_EXECUTION_CONTEXT=1` enables automatic context propagation; `AVTRACE_PROPERTY_SCALARS=1` is an independent privacy decision. Other assemblies can be selected through `DiagnosticsIncludeAssemblies`. Keep portable PDBs beside inputs during weaving.
 
 Signed identities require explicit diagnostic-only invalidation or `DiagnosticsSigningKey`. Do not distribute signature-invalidated outputs as production binaries. Shared runtime/package-cache paths, native/ReadyToRun images and trimmed/NativeAOT/single-file/browser target instrumentation are rejected. The browser is a **viewer**, not an IL-instrumented target. Clean or restore old output before changing hook version or profile.
 
@@ -166,7 +173,7 @@ The reproducible ingestion benchmark validates output checksums and retained/evi
 
 ## Remaining boundaries and publishing
 
-GPU timestamp/counter backends, complete custom-scheduler causality, exhaustive private semantic coverage and complete XAML setter/element mappings remain separate work. The current property history observes supported mutation/notification paths; it does not reconstruct every property-store candidate or prove a global winner at every moment.
+Additional GPU API/counter backends, cross-clock calibration, physical-device certification, complete custom-scheduler causality, exhaustive private semantic coverage and complete XAML setter/element mappings remain separate work. The current property history observes supported mutation/notification paths; it does not reconstruct every property-store candidate or prove a global winner at every moment.
 
 Pages deployment follows browser validation on `main`. `release.yml` builds, tests, packages and checks integration before **NuGet trusted publishing** through `NuGet/login@v1` and GitHub OIDC. Register the NuGet policy for owner `wieslawsoltes`, repository `DisgnosticsVisualizer`, workflow `release.yml`, environment `nuget`, and configure `NUGET_USER`. This workflow cannot create the account-side publisher policy. Package validation is not a claim of NuGet.org upload.
 

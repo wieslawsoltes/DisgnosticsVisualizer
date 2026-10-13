@@ -6,7 +6,7 @@ namespace DiagnosticsVisualizer.Weaver;
 /// <summary>Version-adaptive named hooks. The output manifest records actual matches, not assumed coverage.</summary>
 public static class HookCatalog
 {
-    public const string Version = "10";
+    public const string Version = "11";
     public static Subsystem? Match(MethodDefinition method, bool deep)
     {
         var attribute = method.CustomAttributes.Concat(method.DeclaringType.CustomAttributes).FirstOrDefault(a => a.AttributeType.FullName == "DiagnosticsVisualizer.Runtime.TraceAttribute");

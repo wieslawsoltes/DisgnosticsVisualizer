@@ -5,6 +5,12 @@ using DiagnosticsVisualizer.Core;
 using DiagnosticsVisualizer.Protocol;
 using DiagnosticsVisualizer.Transport;
 
+if (args.Length == 3 && args[0] == "--gpu")
+{
+    await GpuCaptureChecks.VerifyAsync(args[1], args[2]);
+    return;
+}
+
 if (args.Length == 3 && args[0] == "--remote")
 {
     using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(25));
