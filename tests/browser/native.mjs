@@ -5,6 +5,16 @@ import assert from 'node:assert/strict';
 await mkdir('artifacts/browser', { recursive: true });
 const browser = await chromium.launch({ args: ['--enable-unsafe-swiftshader'] });
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 1 });
+// Chromium's File System Access picker is not an HTML input and cannot be
+// intercepted by Playwright's filechooser API. Exercise Avalonia's real HTML
+// file-input fallback, as used by browsers without the optional native picker.
+// No model/import functions are mocked: the chosen bytes still cross JS storage,
+// stream autodetection, the native decoder, analysis, and the shared viewer.
+await page.addInitScript(() => {
+  Reflect.deleteProperty(window, 'showOpenFilePicker');
+  Reflect.deleteProperty(window, 'showSaveFilePicker');
+  Reflect.deleteProperty(window, 'showDirectoryPicker');
+});
 const errors = [];
 page.on('pageerror', error => errors.push(String(error)));
 page.on('response', response => { if (response.status() >= 400) errors.push(`HTTP ${response.status()} ${response.url()}`); });
@@ -42,7 +52,7 @@ try {
   await page.setViewportSize({ width: 1100, height: 760 }); await page.waitForTimeout(250);
   await page.screenshot({ path: 'artifacts/browser/native-restored-compact.png', fullPage: true });
   assert.deepEqual(errors, []);
-  await writeFile('artifacts/browser/native-import-health.json', JSON.stringify({ imported, restored, synthetic: true, realFilePicker: true }, null, 2));
+  await writeFile('artifacts/browser/native-import-health.json', JSON.stringify({ imported, restored, synthetic: true, realFilePicker: true, pickerBackend: 'html-input-fallback' }, null, 2));
 } catch (error) {
   await page.screenshot({ path: 'artifacts/browser/native-import-failure.png', fullPage: true }).catch(() => {});
   await writeFile('artifacts/browser/native-import-failure.txt', String(error.stack ?? error)); throw error;
