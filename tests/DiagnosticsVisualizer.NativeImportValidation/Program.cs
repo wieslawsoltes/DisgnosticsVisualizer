@@ -25,7 +25,7 @@ else
 {
     var token = Environment.GetEnvironmentVariable("AVTRACE_TOKEN") ?? throw new ArgumentException("Set AVTRACE_TOKEN");
     await using var connection = await WebSocketFrameConnection.ConnectAsync(new(args[1]), token, false, deadline.Token);
-    var decoder = new TraceStreamDecoder(); bool sent = false;
+    var decoder = new TraceStreamDecoder(); bool sent = false, announcedReady = false;
     while (await connection.ReceiveAsync(deadline.Token) is { } frame)
     {
         if (WireEnvelope.GetKind(frame) is FrameKind.Trace or FrameKind.SnapshotDelta)
@@ -45,6 +45,15 @@ else
         {
             var reply = CommandCodec.Decode(frame); commands[reply.RequestId] = reply.Argument;
             if (reply.Argument == "SOURCE_DISCONNECTED" && blocks > 0 || args[0] == "late" && reply.Argument == "NO_SOURCE" && blocks > 0) break;
+        }
+        // The segmented replay test must not resume its producer merely because
+        // the server accepted this socket. Signal actual pre-footer consumption
+        // and all three authenticated round trips, after the bootstrap is read.
+        if (!announcedReady && args[0] == "remote" && observedBeforeFooter && !hasFooter &&
+            commands.GetValueOrDefault(101) == "PONG" && commands.GetValueOrDefault(102) == "UNSUPPORTED_NATIVE_CONTROL" &&
+            commands.GetValueOrDefault(103) == "UNSUPPORTED_NATIVE_SNAPSHOT")
+        {
+            Console.WriteLine("NATIVE_VIEWER_READY"); Console.Out.Flush(); announcedReady = true;
         }
     }
     if (args[0] is "viewer" or "remote" && (commands.GetValueOrDefault(101) != "PONG" || commands.GetValueOrDefault(102) != "UNSUPPORTED_NATIVE_CONTROL" || commands.GetValueOrDefault(103) != "UNSUPPORTED_NATIVE_SNAPSHOT"))
